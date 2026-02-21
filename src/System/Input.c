@@ -11,6 +11,9 @@
 /***************/
 
 #include "game.h"
+#ifdef __ANDROID__
+#include "TouchControls.h"
+#endif
 
 
 /**********************/
@@ -149,6 +152,21 @@ void UpdateInput(void)
 	SDL_Event event;
 	while (SDL_PollEvent(&event))
 	{
+#ifdef __ANDROID__
+		// Let the touch controls system handle finger events first.
+		// Finger events that map to touch controls should not fall through
+		// to SDL's touch-mouse emulation.
+		if (TouchControls_ProcessEvent(&event))
+			continue;
+		// Block touch-synthesised mouse events so they don't trigger
+		// mouse-button bindings (which are meaningless on Android).
+		if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+			event.type == SDL_EVENT_MOUSE_BUTTON_UP)
+		{
+			if (event.button.which == SDL_TOUCH_MOUSEID)
+				continue;
+		}
+#endif
 		switch (event.type)
 		{
 			case SDL_EVENT_QUIT:
@@ -208,7 +226,9 @@ void UpdateInput(void)
 
 	int numkeys = 0;
 	const bool* keystate = SDL_GetKeyboardState(&numkeys);
+#ifndef __ANDROID__
 	uint32_t mouseButtons = SDL_GetMouseState(NULL, NULL);
+#endif
 
 	gAnyNewKeysPressed = false;
 
@@ -264,7 +284,11 @@ void UpdateInput(void)
 		}
 
 		if (kb->mouseButton)
+#ifdef __ANDROID__
+			; // Skip mouse button bindings on Android - touch controls replace them
+#else
 			downNow |= 0 != (mouseButtons & SDL_BUTTON_MASK(kb->mouseButton));
+#endif
 
 		if ((kb->mouseWheelDelta > 0 && mouseWheelDelta > 0) || (kb->mouseWheelDelta < 0 && mouseWheelDelta < 0))
 			downNow |= true;
@@ -282,6 +306,35 @@ void UpdateInput(void)
 						|| (kb->gamepadAxisSign < 0 && rawValue < (int16_t)(JOYSTICK_FAKEDIGITAL_DEAD_ZONE * -32768.0f));
 			}
 		}
+
+#ifdef __ANDROID__
+		// Map touch controls to game needs
+		{
+			float joyX = TouchControls_GetJoystickX();
+			float joyY = TouchControls_GetJoystickY();
+			switch (i)
+			{
+				case kNeed_Forward:    downNow |= (joyY >  0.2f); break;
+				case kNeed_Backward:   downNow |= (joyY < -0.2f); break;
+				case kNeed_TurnLeft:   downNow |= (joyX < -0.2f); break;
+				case kNeed_TurnRight:  downNow |= (joyX >  0.2f); break;
+				case kNeed_Jump:       downNow |= TouchControls_IsButtonDown(kTouchBtn_Jump);        break;
+				case kNeed_Attack:     downNow |= TouchControls_IsButtonDown(kTouchBtn_Attack);      break;
+				case kNeed_PickUp:     downNow |= TouchControls_IsButtonDown(kTouchBtn_Pickup);      break;
+				case kNeed_JetUp:      downNow |= TouchControls_IsButtonDown(kTouchBtn_JetUp);       break;
+				case kNeed_JetDown:    downNow |= TouchControls_IsButtonDown(kTouchBtn_JetDown);     break;
+				case kNeed_PrevWeapon: downNow |= TouchControls_IsButtonDown(kTouchBtn_PrevWeapon);  break;
+				case kNeed_NextWeapon: downNow |= TouchControls_IsButtonDown(kTouchBtn_NextWeapon);  break;
+				case kNeed_UIPause:    downNow |= TouchControls_IsButtonDown(kTouchBtn_Pause);       break;
+				case kNeed_UIUp:       downNow |= (joyY >  0.2f); break;
+				case kNeed_UIDown:     downNow |= (joyY < -0.2f); break;
+				case kNeed_UILeft:     downNow |= (joyX < -0.2f); break;
+				case kNeed_UIRight:    downNow |= (joyX >  0.2f); break;
+				case kNeed_UIConfirm:  downNow |= TouchControls_IsButtonDown(kTouchBtn_Attack);      break;
+				default: break;
+			}
+		}
+#endif
 
 		UpdateKeyState(&gNeedStates[i], downNow);
 	}

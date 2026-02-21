@@ -127,13 +127,13 @@ TQ3ColorRGB		c2 = { 1, .9, .6 };
 
 	QD3D_NewViewDef(&viewDef);
 	
-#if TWO_MEG_VERSION
+#if TWO_MEG_VERSION && !defined(__ANDROID__)
 	viewDef.view.paneClip.left 		+= 144;  
 	viewDef.view.paneClip.right 	+= 32;  
 	viewDef.view.paneClip.top		+= 40;  
 	viewDef.view.paneClip.bottom 	+= 140;  
 	viewDef.lights.ambientBrightness = 0.3;
-#else	
+#else
 	viewDef.view.paneClip.left 		+= 118;  
 	viewDef.view.paneClip.right 	+= 12;  
 	viewDef.view.paneClip.top		+= 9;  

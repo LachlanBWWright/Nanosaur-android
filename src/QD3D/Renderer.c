@@ -8,9 +8,16 @@
 /****************************/
 
 #include <SDL3/SDL.h>
+#ifdef __ANDROID__
+#include <stdint.h>
+#include "gles_compat.h"
+#include "GLESBridge.h"
+#include "TouchControls.h"
+#else
 #include <SDL3/SDL_opengl.h>
 #if !OSXPPC
 #include <SDL3/SDL_opengl_glext.h>
+#endif
 #endif
 #include "game.h"
 
@@ -75,7 +82,9 @@ static int					gMeshQueueSize = 0;
 
 static int DepthSortCompare(void const* a_void, void const* b_void);
 static void DrawMeshList(int renderPass, const MeshQueueEntry* entry);
+#if ALLOW_FADE
 static void DrawFadeOverlay(float opacity);
+#endif
 
 #pragma mark -
 
@@ -241,6 +250,11 @@ void Render_SetDefaultModifiers(RenderModifiers* dest)
 
 void Render_InitState(void)
 {
+#ifdef __ANDROID__
+	// Initialize the GLES3 fixed-function emulation bridge before any GL calls.
+	GLESBridge_Init();
+#endif
+
 	SetInitialClientState(GL_VERTEX_ARRAY,				true);
 	SetInitialClientState(GL_NORMAL_ARRAY,				true);
 	SetInitialClientState(GL_COLOR_ARRAY,				false);
@@ -342,6 +356,93 @@ GLuint Render_LoadTexture(
 	if (flags & kRendererTextureFlags_ClampV)
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+#ifdef __ANDROID__
+	// GLES3 does not support GL_BGRA, GL_UNSIGNED_INT_8_8_8_8, or
+	// GL_UNSIGNED_SHORT_1_5_5_5_REV.  Convert to GL_RGBA / GL_UNSIGNED_BYTE.
+	uint8_t *converted = NULL;
+	if (bufferFormat == GL_BGRA || bufferFormat == 0x80E1 /* GL_BGRA */)
+	{
+		// If the original internalFormat is GL_RGB (no alpha channel), the
+		// Mac 1555 format stores 0 in bit 15 as a padding bit.  We must force
+		// A=0xFF for those pixels, otherwise GL_ALPHA_TEST discards every pixel.
+		bool forceOpaqueAlpha = (internalFormat == GL_RGB);
+
+		int numPixels = width * height;
+		converted = (uint8_t *)SDL_malloc((size_t)(numPixels * 4));
+		if (converted)
+		{
+			if (bufferType == GL_UNSIGNED_INT_8_8_8_8 || bufferType == 0x8035)
+			{
+				// Pomme ARGB layout: byte[0]=A, byte[1]=R, byte[2]=G, byte[3]=B.
+				// Convert to GL_RGBA layout: byte[0]=R, byte[1]=G, byte[2]=B, byte[3]=A.
+				const uint8_t *src = (const uint8_t *)pixels;
+				for (int i = 0; i < numPixels; i++)
+				{
+					converted[i*4+0] = src[i*4+1]; // R
+					converted[i*4+1] = src[i*4+2]; // G
+					converted[i*4+2] = src[i*4+3]; // B
+					converted[i*4+3] = forceOpaqueAlpha ? 0xFF : src[i*4+0]; // A
+				}
+			}
+			else if (bufferType == GL_UNSIGNED_INT_8_8_8_8_REV || bufferType == 0x8367)
+			{
+				// Pomme ARGB layout on BE: byte[0]=A, byte[1]=R, byte[2]=G, byte[3]=B.
+				// Convert to GL_RGBA layout: byte[0]=R, byte[1]=G, byte[2]=B, byte[3]=A.
+				const uint8_t *src = (const uint8_t *)pixels;
+				for (int i = 0; i < numPixels; i++)
+				{
+					converted[i*4+0] = src[i*4+1]; // R
+					converted[i*4+1] = src[i*4+2]; // G
+					converted[i*4+2] = src[i*4+3]; // B
+					converted[i*4+3] = forceOpaqueAlpha ? 0xFF : src[i*4+0]; // A
+				}
+			}
+			else if (bufferType == GL_UNSIGNED_SHORT_1_5_5_5_REV || bufferType == 0x8366)
+			{
+				// Input: A1R5G5B5 packed into 16 bits (with GL_BGRA + GL_UNSIGNED_SHORT_1_5_5_5_REV).
+				// For kQ3PixelTypeRGB16 textures (internalFormat=GL_RGB), bit 15 is a padding
+				// zero, not an alpha bit.  Force A=0xFF so GL_ALPHA_TEST does not discard pixels.
+				const uint16_t *src = (const uint16_t *)pixels;
+				for (int i = 0; i < numPixels; i++)
+				{
+					uint16_t px = src[i];
+					// With GL_BGRA + GL_UNSIGNED_SHORT_1_5_5_5_REV:
+					//   bits [4:0]  = B (first BGRA component, LSB field with _REV)
+					//   bits [9:5]  = G
+					//   bits [14:10]= R
+					//   bit  [15]   = A (last BGRA component, MSB field with _REV)
+					// Expand 5-bit to 8-bit: (x<<3)|(x>>2) maps 0->0 and 31->255.
+					uint32_t b5 = (px & 0x001F), g5 = ((px>>5)&0x1F), r5 = ((px>>10)&0x1F);
+					uint8_t b = (uint8_t)((b5 << 3) | (b5 >> 2));
+					uint8_t g = (uint8_t)((g5 << 3) | (g5 >> 2));
+					uint8_t r = (uint8_t)((r5 << 3) | (r5 >> 2));
+					uint8_t a = forceOpaqueAlpha ? 0xFF : ((px >> 15) ? 0xFF : 0x00);
+					converted[i*4+0] = r;
+					converted[i*4+1] = g;
+					converted[i*4+2] = b;
+					converted[i*4+3] = a;
+				}
+			}
+			else
+			{
+				// Unknown BGRA sub-type; just swap R<->B bytes
+				const uint8_t *src = (const uint8_t *)pixels;
+				for (int i = 0; i < numPixels; i++)
+				{
+					converted[i*4+0] = src[i*4+2];
+					converted[i*4+1] = src[i*4+1];
+					converted[i*4+2] = src[i*4+0];
+					converted[i*4+3] = forceOpaqueAlpha ? 0xFF : src[i*4+3];
+				}
+			}
+		}
+		pixels      = converted;
+		bufferFormat = GL_RGBA;
+		bufferType   = GL_UNSIGNED_BYTE;
+		internalFormat = GL_RGBA;	// GLES3: internalFormat must equal format (GL_RGBA)
+	}
+#endif
+
 	glTexImage2D(
 			GL_TEXTURE_2D,
 			0,						// mipmap level
@@ -354,8 +455,99 @@ GLuint Render_LoadTexture(
 			pixels);				// pointer to the actual texture pixels
 	CHECK_GL_ERROR();
 
+#ifdef __ANDROID__
+	if (converted)
+		SDL_free(converted);
+#endif
+
 	return textureName;
 }
+
+void Render_TexSubImage2D(
+		GLenum target,
+		GLint level,
+		GLint xoffset,
+		GLint yoffset,
+		GLsizei width,
+		GLsizei height,
+		GLenum bufferFormat,
+		GLenum bufferType,
+		const GLvoid* pixels)
+{
+#ifdef __ANDROID__
+	// GLES3 does not support GL_BGRA; convert to GL_RGBA / GL_UNSIGNED_BYTE.
+	if (bufferFormat == GL_BGRA || bufferFormat == 0x80E1 /* GL_BGRA_EXT */)
+	{
+		int numPixels = width * height;
+		uint8_t *cvt = (uint8_t *)SDL_malloc((size_t)(numPixels * 4));
+		if (cvt)
+		{
+			if (bufferType == GL_UNSIGNED_SHORT_1_5_5_5_REV || bufferType == 0x8366)
+			{
+				// Terrain tiles use GL_RGB (opaque) -- bit 15 is a Mac padding bit (=0),
+				// not an alpha bit.  Force A=0xFF so GL_ALPHA_TEST keeps all pixels.
+				const uint16_t *src = (const uint16_t *)pixels;
+				for (int i = 0; i < numPixels; i++)
+				{
+					uint16_t px = src[i];
+					// Expand 5-bit to 8-bit: (x<<3)|(x>>2) maps 0->0 and 31->255.
+					uint32_t b5 = (px & 0x001F), g5 = ((px>>5)&0x1F), r5 = ((px>>10)&0x1F);
+					uint8_t b = (uint8_t)((b5 << 3) | (b5 >> 2));
+					uint8_t g = (uint8_t)((g5 << 3) | (g5 >> 2));
+					uint8_t r = (uint8_t)((r5 << 3) | (r5 >> 2));
+					cvt[i*4+0] = r;
+					cvt[i*4+1] = g;
+					cvt[i*4+2] = b;
+					cvt[i*4+3] = 0xFF; // always opaque for RGB16 terrain tiles
+				}
+			}
+			else if (bufferType == GL_UNSIGNED_INT_8_8_8_8 || bufferType == 0x8035)
+			{
+				// Pomme ARGB layout: byte[0]=A, byte[1]=R, byte[2]=G, byte[3]=B.
+				const uint8_t *src = (const uint8_t *)pixels;
+				for (int i = 0; i < numPixels; i++)
+				{
+					cvt[i*4+0] = src[i*4+1]; // R
+					cvt[i*4+1] = src[i*4+2]; // G
+					cvt[i*4+2] = src[i*4+3]; // B
+					cvt[i*4+3] = src[i*4+0]; // A
+				}
+			}
+			else if (bufferType == GL_UNSIGNED_INT_8_8_8_8_REV || bufferType == 0x8367)
+			{
+				// Pomme ARGB layout on BE: byte[0]=A, byte[1]=R, byte[2]=G, byte[3]=B.
+				const uint8_t *src = (const uint8_t *)pixels;
+				for (int i = 0; i < numPixels; i++)
+				{
+					cvt[i*4+0] = src[i*4+1]; // R
+					cvt[i*4+1] = src[i*4+2]; // G
+					cvt[i*4+2] = src[i*4+3]; // B
+					cvt[i*4+3] = src[i*4+0]; // A
+				}
+			}
+			else
+			{
+				// Generic fallback: swap R and B (BGRA → RGBA byte swap)
+				const uint8_t *src = (const uint8_t *)pixels;
+				for (int i = 0; i < numPixels; i++)
+				{
+					cvt[i*4+0] = src[i*4+1]; // R
+					cvt[i*4+1] = src[i*4+2]; // G
+					cvt[i*4+2] = src[i*4+3]; // B
+					cvt[i*4+3] = src[i*4+0]; // A
+				}
+			}
+			glTexSubImage2D(target, level, xoffset, yoffset, width, height,
+					GL_RGBA, GL_UNSIGNED_BYTE, cvt);
+			SDL_free(cvt);
+			return;
+		}
+	}
+#endif
+	glTexSubImage2D(target, level, xoffset, yoffset, width, height,
+			bufferFormat, bufferType, pixels);
+}
+
 
 void Render_Load3DMFTextures(TQ3MetaFile* metaFile, GLuint* outTextureNames)
 {
@@ -966,8 +1158,59 @@ void Render_DrawBackdrop(bool keepBackdropAspectRatio)
 #endif
 
 		// Set unpack row length to 640
+#ifndef __ANDROID__
 		GLint pUnpackRowLength;
 		glGetIntegerv(GL_UNPACK_ROW_LENGTH, &pUnpackRowLength);
+#endif
+
+#ifdef __ANDROID__
+		// GLES3 does not support GL_BGRA + GL_UNSIGNED_INT_8_8_8_8.
+		// Convert the damage rectangle to GL_RGBA / GL_UNSIGNED_BYTE.
+		int dmgW = damageRect.right  - damageRect.left;
+		int dmgH = damageRect.bottom - damageRect.top;
+		uint8_t *cvt = (uint8_t *)SDL_malloc((size_t)(dmgW * dmgH * 4));
+		if (cvt)
+		{
+			const UInt32 *srcRow = gBackdropPixels + damageRect.top * gBackdropWidth + damageRect.left;
+			for (int row = 0; row < dmgH; row++)
+			{
+				for (int col = 0; col < dmgW; col++)
+				{
+					uint32_t px = srcRow[col];
+					// Pomme stores pixels as ARGB (byte[0]=A, byte[1]=R, byte[2]=G, byte[3]=B).
+					// On LE, reading as uint32: bits[0..7]=A, bits[8..15]=R, bits[16..23]=G, bits[24..31]=B.
+					// Convert to GL_RGBA / GL_UNSIGNED_BYTE (byte[0]=R, [1]=G, [2]=B, [3]=A).
+					int idx = (row * dmgW + col) * 4;
+#if !(__BIG_ENDIAN__)
+					cvt[idx+0] = (uint8_t)((px >>  8) & 0xFF); // R
+					cvt[idx+1] = (uint8_t)((px >> 16) & 0xFF); // G
+					cvt[idx+2] = (uint8_t)((px >> 24) & 0xFF); // B
+					cvt[idx+3] = (uint8_t)( px        & 0xFF); // A
+#else
+					// On BE, uint32 bytes are: [A, R, G, B] in MSB-first order.
+					// bits[24..31]=A, bits[16..23]=R, bits[8..15]=G, bits[0..7]=B
+					cvt[idx+0] = (uint8_t)((px >> 16) & 0xFF); // R
+					cvt[idx+1] = (uint8_t)((px >>  8) & 0xFF); // G
+					cvt[idx+2] = (uint8_t)( px        & 0xFF); // B
+					cvt[idx+3] = (uint8_t)((px >> 24) & 0xFF); // A
+#endif
+				}
+				srcRow += gBackdropWidth;
+			}
+		}
+		glTexSubImage2D(
+				GL_TEXTURE_2D,
+				0,
+				damageRect.left,
+				damageRect.top,
+				dmgW,
+				dmgH,
+				GL_RGBA,
+				GL_UNSIGNED_BYTE,
+				cvt);
+		CHECK_GL_ERROR();
+		if (cvt) SDL_free(cvt);
+#else
 		glPixelStorei(GL_UNPACK_ROW_LENGTH, gBackdropWidth);
 
 		glTexSubImage2D(
@@ -988,6 +1231,7 @@ void Render_DrawBackdrop(bool keepBackdropAspectRatio)
 
 		// Restore unpack row length
 		glPixelStorei(GL_UNPACK_ROW_LENGTH, pUnpackRowLength);
+#endif
 
 		ClearPortDamage();
 	}
@@ -998,6 +1242,7 @@ void Render_DrawBackdrop(bool keepBackdropAspectRatio)
 	Render_Exit2D();
 }
 
+#if ALLOW_FADE
 static void DrawFadeOverlay(float opacity)
 {
 	glViewport(0, 0, gWindowWidth, gWindowHeight);
@@ -1010,6 +1255,7 @@ static void DrawFadeOverlay(float opacity)
 	glDrawElements(GL_TRIANGLES, 3*2, GL_UNSIGNED_BYTE, kFullscreenQuadTriangles);
 	Render_Exit2D();
 }
+#endif
 
 #pragma mark -
 
@@ -1041,6 +1287,9 @@ void Render_FreezeFrameFadeOut(void)
 			Render_StartFrame();
 			Render_DrawBackdrop(true);
 			Render_EndFrame();
+#ifdef __ANDROID__
+			TouchControls_Draw();
+#endif
 			SDL_GL_SwapWindow(gSDLWindow);
 		}
 		else if (gTerrainPtr)

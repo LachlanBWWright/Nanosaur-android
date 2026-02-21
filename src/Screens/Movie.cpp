@@ -6,7 +6,13 @@
 #include "PommeVideo.h"
 #include "Video/Cinepak.h"
 
+#ifndef __ANDROID__
 #include <SDL3/SDL_opengl.h>
+#endif
+
+#ifdef __ANDROID__
+#include "TouchControls.h"
+#endif
 
 //-----------------------------------------------------------------------------
 // Movie
@@ -77,6 +83,9 @@ void PlayAMovie(FSSpec* spec)
 		Render_StartFrame();
 		Render_DrawBackdrop(true);
 		Render_EndFrame();
+#ifdef __ANDROID__
+		TouchControls_Draw();
+#endif
 		SDL_GL_SwapWindow(gSDLWindow);
 
 		unsigned int endTicks = SDL_GetTicks();
