@@ -9,6 +9,10 @@ jobs:
   build-wasm:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -36,8 +40,8 @@ jobs:
             -DSDL_TESTS=OFF \
             -DSDL_EXAMPLES=OFF
           emmake make -j$(nproc)
-          emmake make install DESTDIR=/tmp/sdl3-em-install
-          echo "SDL3_DIR=/tmp/sdl3-em-install/usr/local/lib/cmake/SDL3" >> $GITHUB_ENV
+          cmake --install . --prefix /tmp/sdl3-em-install
+          echo "SDL3_DIR=/tmp/sdl3-em-install/lib/cmake/SDL3" >> $GITHUB_ENV
 
       - name: Configure (Emscripten)
         run: |
@@ -56,11 +60,11 @@ jobs:
       - name: Package WebAssembly bundle
         run: |
           mkdir -p dist/wasm/game
+          # Nanosaur.html is the shell with embedded Emscripten bootstrap script
+          cp build-wasm/Nanosaur.html  dist/wasm/game/index.html
           cp build-wasm/Nanosaur.js    dist/wasm/game/
           cp build-wasm/Nanosaur.wasm  dist/wasm/game/
           cp build-wasm/Nanosaur.data  dist/wasm/game/
-          # Rename shell output to index.html for GitHub Pages
-          cp build-wasm/Nanosaur.html  dist/wasm/game/index.html
           # Copy GitHub Pages landing page
           cp docs/index.html           dist/wasm/index.html
           echo "Nanosaur WebAssembly bundle ready"

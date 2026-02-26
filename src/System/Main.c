@@ -398,7 +398,7 @@ unsigned long	someLong;
 
 #ifdef __EMSCRIPTEN__
 		// In WebAssembly mode: skip menus, go straight to gameplay.
-		// emscripten_set_main_loop_arg (simplefy=1) will not return.
+		// emscripten_set_main_loop_arg (simulate_infinite_loop=1) will not return.
 	InitLevel();
 	sEmscriptenKillDelay = KILL_DELAY;
 	MakeFadeEvent(true);
@@ -407,7 +407,8 @@ unsigned long	someLong;
 #else
 	if (gSkipToLevel)
 	{
-		PlayLevel();
+		while(true)
+			PlayLevel();
 	}
 
 	while(true)

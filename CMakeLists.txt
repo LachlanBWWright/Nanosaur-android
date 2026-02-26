@@ -327,8 +327,8 @@ if(EMSCRIPTEN)
 	# Disable visual fades in WebAssembly builds (they use blocking loops)
 	target_compile_definitions(${GAME_TARGET} PRIVATE ALLOW_FADE=0)
 
-	# Output as JavaScript + WebAssembly
-	set_target_properties(${GAME_TARGET} PROPERTIES SUFFIX ".js")
+	# Output as HTML + JS + WebAssembly (the .html suffix activates the --shell-file option)
+	set_target_properties(${GAME_TARGET} PROPERTIES SUFFIX ".html")
 
 	# Exported C functions callable from JavaScript
 	set(WASM_EXPORTED_FUNCTIONS
@@ -351,13 +351,5 @@ if(EMSCRIPTEN)
 		"SHELL:--preload-file ${GAME_DATADIR}@/Data"
 		"SHELL:--shell-file ${CMAKE_SOURCE_DIR}/packaging/emscripten/shell.html"
 		"SHELL:-s USE_WEBGL2=1"
-	)
-
-	# Copy the shell + generated wasm files to output so they can be served directly
-	add_custom_command(TARGET ${GAME_TARGET} POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E copy
-			"${CMAKE_SOURCE_DIR}/packaging/emscripten/shell.html"
-			"$<TARGET_FILE_DIR:${GAME_TARGET}>/index.html"
-		COMMENT "Copying Emscripten shell HTML"
 	)
 endif()
