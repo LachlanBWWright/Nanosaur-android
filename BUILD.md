@@ -170,6 +170,11 @@ Module._CheatGetAllEggs();              // recover all eggs
 
 // Queries
 Module._GetGameScore();                 // returns current score as uint32
+
+// Custom terrain (for level editor: write to Emscripten VFS first, then call)
+FS.writeFile('/Data/Terrain/custom.ter', uint8ArrayData);  // load file into VFS
+Module.ccall('SetCustomTerrainFile', null, ['string'], ['/Data/Terrain/custom.ter']);
+Module._ClearCustomTerrainFile();       // revert to default terrain
 ```
 
 These are also available via the built-in cheat menu on the game page.

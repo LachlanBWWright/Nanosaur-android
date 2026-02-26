@@ -102,4 +102,42 @@ EMSCRIPTEN_KEEPALIVE uint32_t GetGameScore(void)
 }
 
 
+/************************************************************/
+/* CUSTOM TERRAIN FILE                                      */
+/************************************************************/
+//
+// Sets a custom terrain (.ter) file path in the Emscripten VFS and
+// triggers a level restart.  Call this after writing the file to the
+// Emscripten virtual filesystem via FS.writeFile().
+//
+// JavaScript usage:
+//   // First write the file to the VFS:
+//   FS.writeFile('/Data/Terrain/custom.ter', uint8ArrayData);
+//   // Then call this to use it:
+//   Module._SetCustomTerrainFile('/Data/Terrain/custom.ter');
+//
+
+EMSCRIPTEN_KEEPALIVE void SetCustomTerrainFile(const char* path)
+{
+	SDL_strlcpy(gCustomTerrainFile, path ? path : "", sizeof(gCustomTerrainFile));
+	// Trigger level restart so the new terrain is loaded
+	gGameOverFlag = true;
+}
+
+
+/************************************************************/
+/* CLEAR CUSTOM TERRAIN FILE                                */
+/************************************************************/
+//
+// Clears the custom terrain override, reverting to the default terrain.
+//
+
+EMSCRIPTEN_KEEPALIVE void ClearCustomTerrainFile(void)
+{
+	gCustomTerrainFile[0] = '\0';
+	// Trigger level restart
+	gGameOverFlag = true;
+}
+
+
 #endif /* __EMSCRIPTEN__ */

@@ -172,6 +172,16 @@
     <button class="cheat-btn" onclick="doCheat('CheatGetWeapons')">🔫 Get All Weapons</button>
     <button class="cheat-btn" onclick="doCheat('CheatGetAllEggs')">🥚 Get All Eggs</button>
   </div>
+  <div class="control-row" style="margin-top:8px; border-top: 1px solid #333; padding-top: 8px;">
+    <label style="font-size:0.8em; color:#aaa;">Load Custom Terrain (.ter):</label>
+    <input type="file" id="terrain-file-input" accept=".ter" style="display:none"
+           onchange="loadTerrainFile(this)">
+    <button class="cheat-btn" onclick="document.getElementById('terrain-file-input').click()">
+      📂 Upload .ter file
+    </button>
+    <button class="cheat-btn" onclick="clearCustomTerrain()" title="Revert to default terrain">↩️ Default</button>
+    <span id="terrain-file-name" style="font-size:0.75em; color:#888; margin-left:6px;"></span>
+  </div>
   <div id="score-display">Score: —</div>
 </div>
 
@@ -256,6 +266,42 @@
         document.getElementById('score-display').textContent = 'Score: ' + score;
       }
     }, 500);
+  }
+
+  // ----- Custom terrain file loading -----
+  // Writes the uploaded .ter file into the Emscripten virtual filesystem,
+  // then notifies the game to restart with the new terrain.
+  function loadTerrainFile(input) {
+    var file = input.files[0];
+    if (!file) return;
+
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var data = new Uint8Array(e.target.result);
+
+      // Write to Emscripten VFS at the terrain path
+      var vfsPath = '/Data/Terrain/' + file.name;
+      try {
+        FS.writeFile(vfsPath, data);
+        document.getElementById('terrain-file-name').textContent = file.name + ' ✓';
+        // Tell the game to use this file and restart the level
+        if (typeof Module !== 'undefined' && Module._SetCustomTerrainFile) {
+          Module.ccall('SetCustomTerrainFile', null, ['string'], [vfsPath]);
+        }
+      } catch (err) {
+        console.error('[Nanosaur] Failed to write terrain file:', err);
+        document.getElementById('terrain-file-name').textContent = 'Error: ' + err.message;
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function clearCustomTerrain() {
+    document.getElementById('terrain-file-name').textContent = '';
+    document.getElementById('terrain-file-input').value = '';
+    if (typeof Module !== 'undefined' && Module._ClearCustomTerrainFile) {
+      Module._ClearCustomTerrainFile();
+    }
   }
 </script>
 

@@ -343,6 +343,8 @@ if(EMSCRIPTEN)
 		"_CheatGetWeapons"
 		"_CheatGetAllEggs"
 		"_GetGameScore"
+		"_SetCustomTerrainFile"
+		"_ClearCustomTerrainFile"
 	)
 	list(JOIN WASM_EXPORTED_FUNCTIONS "," WASM_EXPORTED_FUNCTIONS_STR)
 
