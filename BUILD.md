@@ -73,3 +73,103 @@ If you want to build the game **manually** instead, the rest of this document de
     ```
     If you'd like to enable runtime sanitizers, append `-DSANITIZE=1` to the **first** `cmake` call above.
 1. The game gets built in `build/Nanosaur`. Enjoy!
+
+
+## How to build the WebAssembly/browser version
+
+This build runs Nanosaur in a web browser via WebAssembly. It is intended for use with level editors or for testing purposes.
+
+### Prerequisites
+
+- [Emscripten SDK (emsdk)](https://emscripten.org/docs/getting_started/downloads.html) — latest stable release
+- Python 3, CMake 3.21+
+
+### Using build.py (automated)
+
+```
+# Install and activate Emscripten
+git clone https://github.com/emscripten-core/emsdk.git
+./emsdk/emsdk install latest
+./emsdk/emsdk activate latest
+source ./emsdk/emsdk_env.sh
+
+# Build
+python3 build.py --wasm
+```
+
+This produces a `dist/Nanosaur-*-wasm.zip` archive containing the browser-ready files.
+
+### Manual build
+
+1. Build SDL3 for Emscripten:
+    ```
+    cd /tmp
+    tar -xzf SDL3-3.2.8.tar.gz && cd SDL3-3.2.8
+    mkdir build-em && cd build-em
+    emcmake cmake -S .. -B . -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TESTS=OFF
+    emmake make -j4
+    cmake --install . --prefix /tmp/sdl3-em-install
+    ```
+
+1. Configure and build Nanosaur:
+    ```
+    emcmake cmake -S . -B build-wasm \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SDL_FROM_SOURCE=OFF \
+        -DSDL_STATIC=ON \
+        -DSDL3_DIR=/tmp/sdl3-em-install/lib/cmake/SDL3
+    emmake cmake --build build-wasm -j4
+    ```
+
+1. Serve the output files with a local HTTP server:
+    ```
+    cd build-wasm
+    python3 -m http.server 8080
+    ```
+    Then open `http://localhost:8080/Nanosaur.html` in your browser.
+
+### WebAssembly features
+
+#### Level editor integration
+
+The WebAssembly build always skips title screens and starts the game directly. You can use URL query parameters for level editor workflows:
+
+| Parameter | Description |
+|-----------|-------------|
+| `level=N` | Load level N directly (currently only `0` is supported) |
+| `skipMenu=1` | Skip title screens (redundant in WebAssembly — always on) |
+| `terrainFile=path` | Override the terrain `.ter` file path |
+
+Example: `index.html?level=0`
+
+#### Desktop level editor integration
+
+On desktop, you can also skip menus with command-line arguments:
+
+```
+./Nanosaur --skip-menu
+./Nanosaur --level 0
+./Nanosaur --terrain-file /path/to/custom.ter
+```
+
+#### JavaScript cheat/debug API
+
+The WebAssembly build exports the following functions callable from JavaScript:
+
+```javascript
+// Fence (background wall) collisions
+Module._SetFenceCollisionsEnabled(1);   // enable (default)
+Module._SetFenceCollisionsEnabled(0);   // disable (player walks through walls)
+Module._GetFenceCollisionsEnabled();    // returns 1 or 0
+
+// Cheats
+Module._CheatRestoreHealth();           // restore player health to full
+Module._CheatFillFuel();                // fill jetpack fuel to max
+Module._CheatGetWeapons();              // give all weapons
+Module._CheatGetAllEggs();              // recover all eggs
+
+// Queries
+Module._GetGameScore();                 // returns current score as uint32
+```
+
+These are also available via the built-in cheat menu on the game page.

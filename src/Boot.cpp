@@ -12,6 +12,7 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <cstdlib>  // for free() used with EM_ASM_PTR allocations
 #endif
 
 extern "C"
