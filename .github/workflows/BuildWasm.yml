@@ -8,7 +8,7 @@ on:
 jobs:
   build-wasm:
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: write
       pages: write
@@ -19,15 +19,22 @@ jobs:
         with:
           submodules: 'recursive'
 
-      - name: Install Emscripten
-        run: |
-          git clone https://github.com/emscripten-core/emsdk.git /tmp/emsdk
-          /tmp/emsdk/emsdk install latest
-          /tmp/emsdk/emsdk activate latest
+      - name: Install Emscripten (with cache)
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+          actions-cache-folder: 'emsdk-cache'
+
+      - name: Cache SDL3 Emscripten build
+        id: cache-sdl3-em
+        uses: actions/cache@v4
+        with:
+          path: /tmp/sdl3-em-install
+          key: sdl3-em-3.2.8-${{ runner.os }}
 
       - name: Build SDL3 for Emscripten
+        if: steps.cache-sdl3-em.outputs.cache-hit != 'true'
         run: |
-          source /tmp/emsdk/emsdk_env.sh
           SDL_VER=3.2.8
           wget -q https://libsdl.org/release/SDL3-${SDL_VER}.tar.gz -O /tmp/SDL3.tar.gz
           tar -xzf /tmp/SDL3.tar.gz -C /tmp
@@ -41,20 +48,17 @@ jobs:
             -DSDL_EXAMPLES=OFF
           emmake make -j$(nproc)
           cmake --install . --prefix /tmp/sdl3-em-install
-          echo "SDL3_DIR=/tmp/sdl3-em-install/lib/cmake/SDL3" >> $GITHUB_ENV
 
       - name: Configure (Emscripten)
         run: |
-          source /tmp/emsdk/emsdk_env.sh
           emcmake cmake -S . -B build-wasm \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SDL_FROM_SOURCE=OFF \
             -DSDL_STATIC=ON \
-            -DSDL3_DIR="${SDL3_DIR}"
+            -DSDL3_DIR=/tmp/sdl3-em-install/lib/cmake/SDL3
 
       - name: Build
         run: |
-          source /tmp/emsdk/emsdk_env.sh
           emmake cmake --build build-wasm -j$(nproc)
 
       - name: Package WebAssembly bundle
