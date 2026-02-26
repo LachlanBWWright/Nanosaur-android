@@ -93,7 +93,9 @@ static void ParseCommandLineArgs(int argc, char** argv)
 		else if (SDL_strcmp(argv[i], "--level") == 0 && i + 1 < argc)
 		{
 			i++;
-			gStartLevelNum = SDL_atoi(argv[i]);
+			int level = SDL_atoi(argv[i]);
+			// Clamp to LEVEL_NUM_0 since that's the only level currently supported
+			gStartLevelNum = (level >= LEVEL_NUM_0) ? level : LEVEL_NUM_0;
 			gSkipToLevel = true;
 		}
 		else if (SDL_strcmp(argv[i], "--terrain-file") == 0 && i + 1 < argc)
@@ -121,7 +123,8 @@ static void ParseEmscriptenURLParams(void)
 	});
 	if (levelStr)
 	{
-		gStartLevelNum = SDL_atoi(levelStr);
+		int level = SDL_atoi(levelStr);
+		gStartLevelNum = (level >= LEVEL_NUM_0) ? level : LEVEL_NUM_0;
 		gSkipToLevel = true;
 		free(levelStr);
 	}
