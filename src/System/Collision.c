@@ -276,7 +276,7 @@ next:
 				// collision will take final priority!
 				//
 
-	if (CType & CTYPE_BGROUND)														// see if do BG collision
+	if ((CType & CTYPE_BGROUND) && !gFenceCollisionsDisabled)		// see if do BG collision
 		AddBGCollisions(baseNode,realDX,realDZ, CType);
 
 

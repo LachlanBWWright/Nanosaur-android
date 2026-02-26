@@ -95,7 +95,9 @@ endif()
 
 add_subdirectory(extern/Pomme)
 
-find_package(OpenGL REQUIRED)
+if(NOT EMSCRIPTEN)
+	find_package(OpenGL REQUIRED)
+endif()
 
 #------------------------------------------------------------------------------
 # EXECUTABLE TARGET
@@ -209,7 +211,12 @@ else()
 endif()
 
 # Link core dependencies
-target_link_libraries(${GAME_TARGET} PRIVATE Pomme OpenGL::GL)
+if(EMSCRIPTEN)
+	# Emscripten uses WebGL instead of OpenGL - no separate OpenGL library needed
+	target_link_libraries(${GAME_TARGET} PRIVATE Pomme)
+else()
+	target_link_libraries(${GAME_TARGET} PRIVATE Pomme OpenGL::GL)
+endif()
 
 # Add required frameworks for KillMacMouseAcceleration
 if(APPLE)
@@ -311,3 +318,46 @@ endif()
 
 # Copy documentation to output folder
 configure_file(${CMAKE_SOURCE_DIR}/packaging/ReadMe.txt.in ${CMAKE_CURRENT_BINARY_DIR}/ReadMe.txt)
+
+#------------------------------------------------------------------------------
+# EMSCRIPTEN / WEBASSEMBLY
+#------------------------------------------------------------------------------
+
+if(EMSCRIPTEN)
+	# Disable visual fades in WebAssembly builds (they use blocking loops)
+	target_compile_definitions(${GAME_TARGET} PRIVATE ALLOW_FADE=0)
+
+	# Output as JavaScript + WebAssembly
+	set_target_properties(${GAME_TARGET} PROPERTIES SUFFIX ".js")
+
+	# Exported C functions callable from JavaScript
+	set(WASM_EXPORTED_FUNCTIONS
+		"_main"
+		"_SetFenceCollisionsEnabled"
+		"_GetFenceCollisionsEnabled"
+		"_CheatRestoreHealth"
+		"_CheatFillFuel"
+		"_CheatGetWeapons"
+		"_CheatGetAllEggs"
+		"_GetGameScore"
+	)
+	list(JOIN WASM_EXPORTED_FUNCTIONS "," WASM_EXPORTED_FUNCTIONS_STR)
+
+	target_link_options(${GAME_TARGET} PRIVATE
+		"SHELL:-s ALLOW_MEMORY_GROWTH=1"
+		"SHELL:-s MAXIMUM_MEMORY=1gb"
+		"SHELL:-s EXPORTED_RUNTIME_METHODS=[\"ccall\",\"cwrap\"]"
+		"SHELL:-s EXPORTED_FUNCTIONS=[${WASM_EXPORTED_FUNCTIONS_STR}]"
+		"SHELL:--preload-file ${GAME_DATADIR}@/Data"
+		"SHELL:--shell-file ${CMAKE_SOURCE_DIR}/packaging/emscripten/shell.html"
+		"SHELL:-s USE_WEBGL2=1"
+	)
+
+	# Copy the shell + generated wasm files to output so they can be served directly
+	add_custom_command(TARGET ${GAME_TARGET} POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy
+			"${CMAKE_SOURCE_DIR}/packaging/emscripten/shell.html"
+			"$<TARGET_FILE_DIR:${GAME_TARGET}>/index.html"
+		COMMENT "Copying Emscripten shell HTML"
+	)
+endif()

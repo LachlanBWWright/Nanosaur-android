@@ -1,6 +1,9 @@
 name: Make Release Builds
 
-on: [workflow_dispatch]
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
 
 jobs:
   build-linux-appimage:
@@ -86,3 +89,135 @@ jobs:
           name: ${{env.ARTIFACT_NAME}}
           path: dist/
           compression-level: 0
+
+  build-wasm:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Install Emscripten
+        run: |
+          git clone https://github.com/emscripten-core/emsdk.git /tmp/emsdk
+          /tmp/emsdk/emsdk install latest
+          /tmp/emsdk/emsdk activate latest
+
+      - name: Build SDL3 for Emscripten
+        run: |
+          source /tmp/emsdk/emsdk_env.sh
+          SDL_VER=3.2.8
+          wget -q https://libsdl.org/release/SDL3-${SDL_VER}.tar.gz -O /tmp/SDL3.tar.gz
+          tar -xzf /tmp/SDL3.tar.gz -C /tmp
+          cd /tmp/SDL3-${SDL_VER}
+          mkdir build && cd build
+          emcmake cmake -S .. -B . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSDL_SHARED=OFF \
+            -DSDL_STATIC=ON \
+            -DSDL_TESTS=OFF \
+            -DSDL_EXAMPLES=OFF
+          emmake make -j$(nproc)
+          emmake make install DESTDIR=/tmp/sdl3-em-install
+          echo "SDL3_DIR=/tmp/sdl3-em-install/usr/local/lib/cmake/SDL3" >> $GITHUB_ENV
+
+      - name: Configure (Emscripten)
+        run: |
+          source /tmp/emsdk/emsdk_env.sh
+          emcmake cmake -S . -B build-wasm \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SDL_FROM_SOURCE=OFF \
+            -DSDL_STATIC=ON \
+            -DSDL3_DIR="${SDL3_DIR}"
+
+      - name: Build
+        run: |
+          source /tmp/emsdk/emsdk_env.sh
+          emmake cmake --build build-wasm -j$(nproc)
+
+      - name: Package WebAssembly bundle
+        run: |
+          mkdir -p dist/wasm/game
+          cp build-wasm/Nanosaur.js    dist/wasm/game/
+          cp build-wasm/Nanosaur.wasm  dist/wasm/game/
+          cp build-wasm/Nanosaur.data  dist/wasm/game/
+          cp build-wasm/Nanosaur.html  dist/wasm/game/index.html
+          cp docs/index.html           dist/wasm/index.html
+          cd dist
+          zip -r Nanosaur-wasm.zip wasm/
+
+      - name: Upload WebAssembly artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nanosaur-wasm
+          path: dist/wasm/
+          compression-level: 0
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        if: github.event_name == 'push'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: dist/wasm
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: "Deploy WebAssembly build from ${{ github.sha }}"
+
+  create-github-release:
+    needs: [build-linux-appimage, build-windows, build-wasm]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts/
+
+      - name: Get version
+        run: |
+          VERSION=$(python3 -c "
+          import re
+          with open('src/Headers/version.h') as f:
+            for line in f:
+              m = re.match(r'#define GAME_VERSION\s+\"(.+)\"', line.strip())
+              if m:
+                print(m.group(1))
+                break
+          ")
+          echo "GAME_VERSION=${VERSION}" >> $GITHUB_ENV
+
+      - name: Prepare WebAssembly zip for release
+        run: |
+          cd release-artifacts/Nanosaur-wasm
+          zip -r ../../Nanosaur-${{ env.GAME_VERSION }}-wasm.zip .
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.GAME_VERSION }}-dev
+          name: "Nanosaur ${{ env.GAME_VERSION }} (Development Build)"
+          body: |
+            Automated development build from commit ${{ github.sha }}.
+
+            ### Downloads
+            - **WebAssembly**: `Nanosaur-*-wasm.zip` – Run in browser (extract and serve)
+            - **Windows**: `Nanosaur-*-windows-x64.zip`
+            - **Linux x86_64**: `Nanosaur-*-linux-x86_64.AppImage`
+            - **Linux aarch64**: `Nanosaur-*-linux-aarch64.AppImage`
+
+            ### WebAssembly / Level Editor
+            The WebAssembly build supports direct level loading:
+            ```
+            index.html?level=0&skipMenu=1
+            ```
+            See the [GitHub Pages site](https://LachlanBWWright.github.io/Nanosaur-android/) for the hosted version.
+          files: |
+            release-artifacts/**/*.zip
+            release-artifacts/**/*.AppImage
+            Nanosaur-${{ env.GAME_VERSION }}-wasm.zip
+          prerelease: true
+          make_latest: false

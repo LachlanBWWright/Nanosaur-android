@@ -10,6 +10,10 @@
 #include "PommeInit.h"
 #include "PommeFiles.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 extern "C"
 {
 	#include "game.h"
@@ -19,6 +23,11 @@ extern "C"
 	UInt32* gBackdropPixels = nullptr;
 	FSSpec gDataSpec;
 	int gCurrentAntialiasingLevel;
+
+	void FSMakeCustomSpec(const char* hostPath, FSSpec* outSpec)
+	{
+		*outSpec = Pomme::Files::HostPathToFSSpec(hostPath);
+	}
 }
 
 static fs::path FindGameData(const char* executablePath)
@@ -72,6 +81,77 @@ tryAgain:
 	return dataPath;
 }
 
+static void ParseCommandLineArgs(int argc, char** argv)
+{
+	for (int i = 1; i < argc; i++)
+	{
+		if (SDL_strcmp(argv[i], "--skip-menu") == 0)
+		{
+			gSkipToLevel = true;
+		}
+		else if (SDL_strcmp(argv[i], "--level") == 0 && i + 1 < argc)
+		{
+			i++;
+			gStartLevelNum = SDL_atoi(argv[i]);
+			gSkipToLevel = true;
+		}
+		else if (SDL_strcmp(argv[i], "--terrain-file") == 0 && i + 1 < argc)
+		{
+			i++;
+			SDL_strlcpy(gCustomTerrainFile, argv[i], sizeof(gCustomTerrainFile));
+			gSkipToLevel = true;
+		}
+	}
+}
+
+#ifdef __EMSCRIPTEN__
+static void ParseEmscriptenURLParams(void)
+{
+	// Read URL query parameters via JavaScript
+	// E.g. index.html?level=0&skipMenu=1&terrainFile=custom.ter
+	char* levelStr = (char*) EM_ASM_PTR({
+		var params = new URLSearchParams(window.location.search);
+		var v = params.get('level');
+		if (!v) return 0;
+		var len = lengthBytesUTF8(v) + 1;
+		var buf = _malloc(len);
+		stringToUTF8(v, buf, len);
+		return buf;
+	});
+	if (levelStr)
+	{
+		gStartLevelNum = SDL_atoi(levelStr);
+		gSkipToLevel = true;
+		free(levelStr);
+	}
+
+	char* terrainFileStr = (char*) EM_ASM_PTR({
+		var params = new URLSearchParams(window.location.search);
+		var v = params.get('terrainFile');
+		if (!v) return 0;
+		var len = lengthBytesUTF8(v) + 1;
+		var buf = _malloc(len);
+		stringToUTF8(v, buf, len);
+		return buf;
+	});
+	if (terrainFileStr)
+	{
+		SDL_strlcpy(gCustomTerrainFile, terrainFileStr, sizeof(gCustomTerrainFile));
+		free(terrainFileStr);
+	}
+
+	int skipMenu = EM_ASM_INT({
+		var params = new URLSearchParams(window.location.search);
+		return params.has('skipMenu') ? 1 : 0;
+	});
+	if (skipMenu)
+		gSkipToLevel = true;
+
+	// In WebAssembly we always skip to level for the game-editor use case
+	gSkipToLevel = true;
+}
+#endif
+
 static void Boot(int argc, char** argv)
 {
 	SDL_SetAppMetadata(GAME_FULL_NAME, GAME_VERSION, GAME_IDENTIFIER);
@@ -79,6 +159,14 @@ static void Boot(int argc, char** argv)
 	SDL_SetLogPriorities(SDL_LOG_PRIORITY_VERBOSE);
 #else
 	SDL_SetLogPriorities(SDL_LOG_PRIORITY_INFO);
+#endif
+
+	// Parse command-line arguments for level skip / custom terrain
+	ParseCommandLineArgs(argc, argv);
+
+#ifdef __EMSCRIPTEN__
+	// Also read URL query parameters in web builds
+	ParseEmscriptenURLParams();
 #endif
 
 	// Start our "machine"
@@ -99,9 +187,16 @@ retryVideo:
 	}
 
 	// Create window
+#ifdef __EMSCRIPTEN__
+	// On Emscripten use OpenGL ES 2 (WebGL)
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+#else
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+#endif
 
 	gCurrentAntialiasingLevel = gGamePrefs.antialiasingLevel;
 	if (gCurrentAntialiasingLevel != 0)

@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nanosaur</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #111;
+      color: #eee;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    #header {
+      width: 100%;
+      background: #1a1a1a;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 2px solid #333;
+    }
+
+    #header h1 {
+      font-size: 1.3em;
+      color: #f80;
+    }
+
+    #header span {
+      font-size: 0.85em;
+      color: #888;
+    }
+
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      max-width: 960px;
+      margin-top: 8px;
+    }
+
+    /* The canvas must have NO border or padding - required by Emscripten */
+    canvas#canvas {
+      display: block;
+      width: 100%;
+      aspect-ratio: 4/3;
+      background: #000;
+      cursor: crosshair;
+    }
+
+    #status-overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.75);
+      padding: 20px 32px;
+      border-radius: 8px;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    #status-overlay.hidden { display: none; }
+
+    #spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #555;
+      border-top-color: #f80;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #status-text { font-size: 0.95em; color: #ccc; }
+    #progress-bar-container { width: 220px; height: 8px; background: #333; border-radius: 4px; margin: 10px auto 0; }
+    #progress-bar { height: 100%; background: #f80; border-radius: 4px; width: 0%; transition: width 0.2s; }
+
+    #controls {
+      width: 100%;
+      max-width: 960px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 4px;
+      margin-top: 8px;
+      padding: 12px 16px;
+    }
+
+    #controls h2 { font-size: 0.9em; color: #f80; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .control-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .control-row label { font-size: 0.8em; color: #aaa; display: flex; align-items: center; gap: 6px; }
+
+    button.cheat-btn {
+      background: #2a2a2a;
+      color: #eee;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 5px 12px;
+      font-size: 0.8em;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    button.cheat-btn:hover { background: #3a3a3a; }
+    button.cheat-btn:active { background: #f80; color: #111; }
+
+    .toggle-btn {
+      background: #2a2a2a;
+      color: #eee;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 5px 12px;
+      font-size: 0.8em;
+      cursor: pointer;
+    }
+
+    .toggle-btn.active { background: #f80; color: #111; border-color: #f80; }
+
+    #score-display { font-size: 0.85em; color: #aaa; margin-top: 4px; }
+
+    footer {
+      margin-top: 16px;
+      font-size: 0.75em;
+      color: #555;
+      text-align: center;
+      padding-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <h1>🦕 Nanosaur</h1>
+  <span>WebAssembly Edition</span>
+</div>
+
+<div id="canvas-container">
+  <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+
+  <div id="status-overlay">
+    <div id="spinner"></div>
+    <div id="status-text">Loading…</div>
+    <div id="progress-bar-container">
+      <div id="progress-bar"></div>
+    </div>
+  </div>
+</div>
+
+<div id="controls">
+  <h2>🎮 Cheat Menu / Level Editor Controls</h2>
+  <div class="control-row">
+    <label>Fence Collisions:</label>
+    <button class="toggle-btn active" id="btn-fence" onclick="toggleFence(this)">Enabled</button>
+  </div>
+  <div class="control-row">
+    <button class="cheat-btn" onclick="doCheat('CheatRestoreHealth')">❤️ Restore Health</button>
+    <button class="cheat-btn" onclick="doCheat('CheatFillFuel')">⛽ Fill Fuel</button>
+    <button class="cheat-btn" onclick="doCheat('CheatGetWeapons')">🔫 Get All Weapons</button>
+    <button class="cheat-btn" onclick="doCheat('CheatGetAllEggs')">🥚 Get All Eggs</button>
+  </div>
+  <div id="score-display">Score: —</div>
+</div>
+
+<footer>
+  © 1998 Pangea Software, Inc. · Source port by Iliyas Jorio · WebAssembly port for level editor testing
+</footer>
+
+<script>
+  // ----- Emscripten module configuration -----
+  var Module = {
+    canvas: (function() { return document.getElementById('canvas'); })(),
+
+    print: function(text) { console.log('[Nanosaur]', text); },
+    printErr: function(text) { console.error('[Nanosaur]', text); },
+
+    setStatus: function(text) {
+      var overlay = document.getElementById('status-overlay');
+      var statusText = document.getElementById('status-text');
+      var progressBar = document.getElementById('progress-bar');
+
+      if (!text) {
+        overlay.classList.add('hidden');
+        startScorePolling();
+        return;
+      }
+
+      overlay.classList.remove('hidden');
+
+      var match = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+      if (match) {
+        statusText.textContent = match[1].trim();
+        progressBar.style.width = (parseInt(match[2]) / parseInt(match[4]) * 100) + '%';
+      } else {
+        statusText.textContent = text;
+      }
+    },
+
+    monitorRunDependencies: function(left) {
+      if (left === 0) {
+        Module.setStatus('');
+      }
+    },
+
+    onRuntimeInitialized: function() {
+      Module.setStatus('');
+    }
+  };
+
+  window.onerror = function(msg) {
+    var statusText = document.getElementById('status-text');
+    if (statusText) {
+      statusText.textContent = 'Error: ' + msg;
+      document.getElementById('spinner').style.display = 'none';
+    }
+  };
+
+  // ----- Cheat / command interface -----
+
+  var fenceEnabled = true;
+  var scoreTimer = null;
+
+  function toggleFence(btn) {
+    fenceEnabled = !fenceEnabled;
+    btn.textContent = fenceEnabled ? 'Enabled' : 'Disabled';
+    btn.classList.toggle('active', fenceEnabled);
+    if (typeof Module !== 'undefined' && Module._SetFenceCollisionsEnabled) {
+      Module._SetFenceCollisionsEnabled(fenceEnabled ? 1 : 0);
+    }
+  }
+
+  function doCheat(fnName) {
+    if (typeof Module !== 'undefined' && Module['_' + fnName]) {
+      Module['_' + fnName]();
+    }
+  }
+
+  function startScorePolling() {
+    if (scoreTimer) return;
+    scoreTimer = setInterval(function() {
+      if (typeof Module !== 'undefined' && Module._GetGameScore) {
+        var score = Module._GetGameScore();
+        document.getElementById('score-display').textContent = 'Score: ' + score;
+      }
+    }, 500);
+  }
+</script>
+
+{{{ SCRIPT }}}
+
+</body>
+</html>
