@@ -173,3 +173,35 @@ Module._GetGameScore();                 // returns current score as uint32
 ```
 
 These are also available via the built-in cheat menu on the game page.
+
+## How to build the Android version
+
+The Android build uses SDL3's Android project template. Currently the Android Gradle project is not yet set up in this repository, but the steps would be:
+
+### Prerequisites
+
+- Android Studio (or Android SDK command-line tools)
+- Android NDK r27+
+- Java 17+
+- Gradle 8+
+
+### Setup (one-time)
+
+1. Download SDL3 source and copy the `android-project/` template to `android/` in this repo.
+2. Configure the Gradle project to point to our CMakeLists.txt.
+3. Copy game data to `android/app/src/main/assets/`.
+
+See the SDL3 Android documentation at https://wiki.libsdl.org/SDL3/README-android for details.
+
+### Build
+
+Once the Android project is set up:
+```
+cd android
+./gradlew assembleDebug     # debug APK
+./gradlew assembleRelease   # release APK (requires signing config)
+```
+
+### CI/CD
+
+The `.github/workflows/BuildAndroid.yml` workflow will build the Android APK when the `android/` project directory is present. Currently it is set to `workflow_dispatch` only (manual trigger) since the Android project is not yet configured.
