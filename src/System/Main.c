@@ -24,7 +24,8 @@ static void InitLevel(void);
 static void CleanupLevel(void);
 static void PlayLevel(void);
 #ifdef __EMSCRIPTEN__
-static void EmscriptenGameFrame(void* arg);
+void EmscriptenGameFrameImpl(void* arg);
+extern void EmscriptenGameFrameSafe(void* arg);  /* defined in Boot.cpp */
 #endif
 
 
@@ -403,7 +404,7 @@ unsigned long	someLong;
 	sEmscriptenKillDelay = KILL_DELAY;
 	MakeFadeEvent(true);
 	QD3D_CalcFramesPerSecond();
-	emscripten_set_main_loop_arg(EmscriptenGameFrame, NULL, 0, 1);
+	emscripten_set_main_loop_arg(EmscriptenGameFrameSafe, NULL, 0, 1);
 #else
 	if (gSkipToLevel)
 	{
@@ -423,8 +424,14 @@ unsigned long	someLong;
 
 #ifdef __EMSCRIPTEN__
 /**************** EMSCRIPTEN PER-FRAME CALLBACK ************************/
+//
+// EmscriptenGameFrameImpl contains the actual per-frame game logic.
+// It is called from a C++ exception-safe wrapper defined in Boot.cpp
+// (EmscriptenGameFrameSafe) to catch Pomme::QuitRequest and other
+// C++ exceptions that would otherwise abort the WASM runtime.
+//
 
-static void EmscriptenGameFrame(void* arg)
+void EmscriptenGameFrameImpl(void* arg)
 {
 	(void) arg;
 
@@ -499,4 +506,9 @@ static void EmscriptenGameFrame(void* arg)
 		}
 	}
 }
+
+// EmscriptenGameFrameSafe is the actual callback registered with
+// emscripten_set_main_loop_arg.  It is defined in Boot.cpp (C++) so
+// it can wrap EmscriptenGameFrameImpl in a try/catch block.
+extern void EmscriptenGameFrameSafe(void* arg);
 #endif

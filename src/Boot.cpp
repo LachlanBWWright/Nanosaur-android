@@ -192,8 +192,9 @@ retryVideo:
 
 	// Create window
 #ifdef __EMSCRIPTEN__
-	// On Emscripten use OpenGL ES 2 (WebGL)
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+	// On Emscripten use OpenGL compatibility profile so that LEGACY_GL_EMULATION
+	// can satisfy the fixed-function pipeline calls (glLightfv, glMatrixMode, etc.)
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 #else
@@ -258,6 +259,48 @@ static void Shutdown()
 
 	SDL_Quit();
 }
+
+#ifdef __EMSCRIPTEN__
+/****************************/
+/* EMSCRIPTEN FRAME WRAPPER */
+/****************************/
+//
+// EmscriptenGameFrameSafe is the callback registered with
+// emscripten_set_main_loop_arg.  It wraps EmscriptenGameFrameImpl
+// (defined in Main.c) in a C++ try/catch so that Pomme::QuitRequest
+// (thrown by ExitToShell) and any other C++ exceptions are handled
+// gracefully instead of aborting the WASM runtime.
+//
+
+extern "C" void EmscriptenGameFrameImpl(void* arg);
+
+extern "C" void EmscriptenGameFrameSafe(void* arg)
+{
+	try
+	{
+		EmscriptenGameFrameImpl(arg);
+	}
+	catch (Pomme::QuitRequest&)
+	{
+		// ExitToShell() was called -- treat it as a level restart.
+		// gGameOverFlag is checked each frame in EmscriptenGameFrameImpl,
+		// so setting it here ensures a clean restart next frame.
+		gGameOverFlag = true;
+	}
+	catch (std::exception& ex)
+	{
+		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+			"Unhandled exception in game frame: %s", ex.what());
+		emscripten_cancel_main_loop();
+	}
+	catch (...)
+	{
+		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+			"Unknown exception in game frame");
+		emscripten_cancel_main_loop();
+	}
+}
+#endif /* __EMSCRIPTEN__ */
 
 int main(int argc, char** argv)
 {

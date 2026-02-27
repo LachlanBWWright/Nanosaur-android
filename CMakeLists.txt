@@ -93,6 +93,14 @@ endif()
 # DEPENDENCIES
 #------------------------------------------------------------------------------
 
+# Enable native WASM C++ exceptions globally so that both Pomme (which throws
+# Pomme::QuitRequest) and game code can use exceptions.  Must be set before
+# add_subdirectory(Pomme) so the library is compiled with the same ABI.
+if(EMSCRIPTEN)
+	add_compile_options("-fwasm-exceptions")
+	add_link_options("-fwasm-exceptions")
+endif()
+
 add_subdirectory(extern/Pomme)
 
 if(NOT EMSCRIPTEN)
@@ -349,12 +357,15 @@ if(EMSCRIPTEN)
 	list(JOIN WASM_EXPORTED_FUNCTIONS "," WASM_EXPORTED_FUNCTIONS_STR)
 
 	target_link_options(${GAME_TARGET} PRIVATE
+		"-fwasm-exceptions"
 		"SHELL:-s ALLOW_MEMORY_GROWTH=1"
 		"SHELL:-s MAXIMUM_MEMORY=1gb"
 		"SHELL:-s EXPORTED_RUNTIME_METHODS=[\"ccall\",\"cwrap\"]"
 		"SHELL:-s EXPORTED_FUNCTIONS=[${WASM_EXPORTED_FUNCTIONS_STR}]"
 		"SHELL:--preload-file ${GAME_DATADIR}@/Data"
 		"SHELL:--shell-file ${CMAKE_SOURCE_DIR}/packaging/emscripten/shell.html"
-		"SHELL:-s USE_WEBGL2=1"
+		"SHELL:-s LEGACY_GL_EMULATION=1"
+		"SHELL:-s GL_UNSAFE_OPTS=0"
+		"SHELL:-s EMULATE_FUNCTION_POINTER_CASTS=1"
 	)
 endif()
