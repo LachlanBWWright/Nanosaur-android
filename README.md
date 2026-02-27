@@ -1,8 +1,10 @@
 # Nanosaur
 
-This is Pangea Software’s **Nanosaur** updated to run on modern systems. Originally released in 1998 as a Mac-only game, Nanosaur casts a cybernetic dinosaur from the future who’s sent back in time 20 minutes before a giant asteroid hits the Earth.
+This is Pangea Software's **Nanosaur** updated to run on modern systems. Originally released in 1998 as a Mac-only game, Nanosaur casts a cybernetic dinosaur from the future who's sent back in time 20 minutes before a giant asteroid hits the Earth.
 
 **Download the game for macOS, Windows or Linux here:** https://github.com/jorio/Nanosaur/releases
+
+**Play the WebAssembly version in your browser:** https://lachanbwwright.github.io/Nanosaur-android/
 
 ![Screenshot](docs/screenshot.png)
 
@@ -12,7 +14,24 @@ This is Pangea Software’s **Nanosaur** updated to run on modern systems. Origi
 - [CHANGELOG](CHANGELOG.md) — Nanosaur version history.
 - [LICENSE](LICENSE.md) — Licensing information (see also below).
 - [Instructions](docs/Nanosaur%20Instructions.pdf) — Original instruction manual.
-- [Game Engine Information](docs/Nanosaur%20Game%20Engine%20Docs.md) — An overview of Nanosaur’s game engine, written by Brian Greenstone.
+- [Game Engine Information](docs/Nanosaur%20Game%20Engine%20Docs.md) — An overview of Nanosaur's game engine, written by Brian Greenstone.
+
+## WebAssembly Browser Version
+
+The WebAssembly port allows you to play Nanosaur directly in your web browser with no installation required. This version is particularly useful for:
+- Quick testing and gameplay without building from source
+- Level editor integration and rapid testing workflows
+- Cross-platform compatibility (works on any device with a modern browser)
+
+**Play now:** https://lachanbwwright.github.io/Nanosaur-android/
+
+The WebAssembly build includes:
+- Full game functionality with embedded game data
+- JavaScript cheat menu for testing (health, fuel, weapons, eggs)
+- Custom terrain file loading for level editor workflows
+- URL parameters for quick level access (see BUILD.md for details)
+
+The site is automatically built and deployed via GitHub Actions whenever changes are pushed to the master branch.
 
 ## About this port
 

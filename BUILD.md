@@ -79,6 +79,10 @@ If you want to build the game **manually** instead, the rest of this document de
 
 This build runs Nanosaur in a web browser via WebAssembly. It is intended for use with level editors or for testing purposes.
 
+**Play the live version:** https://lachanbwwright.github.io/Nanosaur-android/
+
+The WebAssembly build is automatically built and deployed to GitHub Pages whenever changes are pushed to the master branch.
+
 ### Prerequisites
 
 - [Emscripten SDK (emsdk)](https://emscripten.org/docs/getting_started/downloads.html) — latest stable release

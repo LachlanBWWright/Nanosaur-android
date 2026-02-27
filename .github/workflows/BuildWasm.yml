@@ -2,6 +2,8 @@ name: Build WebAssembly
 
 on:
   push:
+    branches:
+      - master
   workflow_dispatch:
 
 jobs:
@@ -70,6 +72,8 @@ jobs:
           cp build-wasm/Nanosaur.data  dist/wasm/game/
           # Copy GitHub Pages landing page
           cp docs/index.html           dist/wasm/index.html
+          # Add .nojekyll to prevent GitHub Pages from processing files with Jekyll
+          touch dist/wasm/.nojekyll
           echo "Nanosaur WebAssembly bundle ready"
           ls -lh dist/wasm/game/
 
@@ -82,7 +86,7 @@ jobs:
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
-        if: github.event_name == 'push'
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: dist/wasm
