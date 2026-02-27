@@ -107,6 +107,9 @@ parser.add_argument("--dist-dir", metavar="<dir>", default=dist_dir,
 parser.add_argument("--print-artifact-name", default=False, action="store_true",
         help="print artifact name and exit")
 
+parser.add_argument("--wasm", default=False, action="store_true",
+        help="build WebAssembly/Emscripten target instead of the native platform target")
+
 if SYSTEM == "Linux":
     parser.add_argument("--system-sdl", default=False, action="store_true",
         help="use system SDL instead of building SDL from scratch")
@@ -438,6 +441,110 @@ class LinuxProject(Project):
             rm_if_exists(self.get_artifact_path())
             call([appimagetool_path, appdir, self.get_artifact_path()])
 
+
+class WasmProject(Project):
+    """WebAssembly/Emscripten build."""
+
+    def __init__(self, dir_name="build-wasm", sdl3_em_dir=""):
+        super().__init__(dir_name)
+        self.sdl3_em_dir = sdl3_em_dir
+        self.build_args += ["-j", str(NPROC)]
+
+    def get_artifact_name(self):
+        return f"{game_name}-{game_ver}-wasm.zip"
+
+    def _find_emcmake(self):
+        em = shutil.which("emcmake")
+        if not em:
+            die("emcmake not found. Install Emscripten and run 'source emsdk_env.sh' first.")
+        return em
+
+    def _find_emmake(self):
+        em = shutil.which("emmake")
+        if not em:
+            die("emmake not found. Install Emscripten and run 'source emsdk_env.sh' first.")
+        return em
+
+    def prepare_dependencies(self):
+        # Build SDL3 from source for Emscripten if an SDL3 Emscripten directory was not provided
+        if self.sdl3_em_dir:
+            return
+
+        sdl_source_dir = f"{libs_dir}/SDL3-{sdl_ver}"
+        sdl_install_dir = f"{sdl_source_dir}/install-em"
+        rmtree_if_exists(sdl_source_dir)
+
+        sdl_zip_path = get_package(f"https://libsdl.org/release/SDL3-{sdl_ver}.tar.gz")
+        shutil.unpack_archive(sdl_zip_path, libs_dir)
+
+        emcmake = self._find_emcmake()
+        emmake = self._find_emmake()
+
+        with chdir(sdl_source_dir):
+            call([emcmake, "cmake", "-S", ".", "-B", "build-em",
+                  "-DCMAKE_BUILD_TYPE=Release",
+                  "-DSDL_SHARED=OFF",
+                  "-DSDL_STATIC=ON",
+                  "-DSDL_TESTS=OFF",
+                  "-DSDL_EXAMPLES=OFF"])
+            call([emmake, "cmake", "--build", "build-em", "-j", str(NPROC)])
+            call(["cmake", "--install", "build-em", f"--prefix={sdl_install_dir}"])
+
+        self.sdl3_em_dir = f"{sdl_install_dir}/lib/cmake/SDL3"
+
+    def configure(self):
+        fatlog(f"Configuring {self.dir_name} (WebAssembly)")
+
+        if os.path.exists(self.dir_name):
+            if not os.path.exists(self.dir_name + "/CMakeCache.txt"):
+                die(f"Path exists and isn't an old build directory: {self.dir_name}")
+            shutil.rmtree(self.dir_name)
+
+        emcmake = self._find_emcmake()
+
+        cmake_args = [emcmake, "cmake", "-S", ".", "-B", self.dir_name,
+                      "-DCMAKE_BUILD_TYPE=Release",
+                      "-DBUILD_SDL_FROM_SOURCE=OFF",
+                      "-DSDL_STATIC=ON"]
+
+        if self.sdl3_em_dir:
+            cmake_args += [f"-DSDL3_DIR={self.sdl3_em_dir}"]
+
+        cmake_args += self.gen_args
+
+        call(cmake_args)
+
+    def build(self):
+        emmake = self._find_emmake()
+        build_command = [emmake, "cmake", "--build", self.dir_name]
+        if self.build_args:
+            build_command += ["--"] + self.build_args
+        call(build_command)
+
+    def package(self):
+        wasm_dir = f"{cache_dir}/{game_name}-{game_ver}-wasm"
+        wasm_game_dir = f"{wasm_dir}/game"
+        rmtree_if_exists(wasm_dir)
+        os.makedirs(wasm_game_dir, exist_ok=True)
+
+        for ext in [".js", ".wasm", ".data"]:
+            src = f"{self.dir_name}/{game_name}{ext}"
+            if os.path.exists(src):
+                shutil.copy(src, wasm_game_dir)
+
+        # Copy the generated HTML (the shell with Emscripten runtime injected)
+        html_src = f"{self.dir_name}/{game_name}.html"
+        if os.path.exists(html_src):
+            shutil.copy(html_src, f"{wasm_game_dir}/index.html")
+
+        # Copy GitHub Pages landing page
+        if os.path.exists("docs/index.html"):
+            shutil.copy("docs/index.html", f"{wasm_dir}/index.html")
+
+        rm_if_exists(self.get_artifact_path())
+        os.makedirs(dist_dir, exist_ok=True)
+        zipdir(self.get_artifact_path(), wasm_dir, f"{game_name}-{game_ver}-wasm")
+
 #----------------------------------------------------------------
 
 if __name__ == "__main__":
@@ -447,7 +554,9 @@ if __name__ == "__main__":
     #----------------------------------------------------------------
     # Set up project metadata
 
-    if SYSTEM == "Windows":
+    if getattr(args, 'wasm', False):
+        project = WasmProject(build_dir)
+    elif SYSTEM == "Windows":
         project = WindowsProject(build_dir)
 
     elif SYSTEM == "Darwin":

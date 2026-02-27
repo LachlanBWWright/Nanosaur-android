@@ -62,3 +62,5 @@ extern	void LoadTerrain(FSSpec *fsSpec);
 
 extern	void LoadLevelArt(short levelNum);
 
+void FSMakeCustomSpec(const char* hostPath, FSSpec* outSpec);
+

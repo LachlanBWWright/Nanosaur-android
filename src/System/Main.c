@@ -11,6 +11,10 @@
 
 #include "game.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 
 /****************************/
 /*    PROTOTYPES            */
@@ -19,6 +23,10 @@
 static void InitLevel(void);
 static void CleanupLevel(void);
 static void PlayLevel(void);
+#ifdef __EMSCRIPTEN__
+void EmscriptenGameFrameImpl(void* arg);
+extern void EmscriptenGameFrameSafe(void* arg);  /* defined in Boot.cpp */
+#endif
 
 
 /****************************/
@@ -35,6 +43,15 @@ static void PlayLevel(void);
 
 Boolean		gGameOverFlag;
 Boolean		gPlayerGotKilledFlag,gWonGameFlag;
+
+Boolean		gSkipToLevel = false;
+int			gStartLevelNum = LEVEL_NUM_0;
+char		gCustomTerrainFile[512] = {0};
+Boolean		gFenceCollisionsDisabled = false;
+
+#ifdef __EMSCRIPTEN__
+static float	sEmscriptenKillDelay;
+#endif
 
 QD3DSetupOutputType		*gGameViewInfoPtr = nil;
 
@@ -178,7 +195,7 @@ TQ3ColorRGB		c2 = { 1, .9, .6 };
 
 	MakeShadowTexture();
 
-	LoadLevelArt(LEVEL_NUM_0);
+	LoadLevelArt(gStartLevelNum);
 
 	QD3D_InitShards();	
 	InitWeaponManager();
@@ -373,10 +390,27 @@ unsigned long	someLong;
 
 	GetDateTime ((unsigned long *)(&someLong));		// init random seed
 	SetMyRandomSeed(someLong);
-	
+
+#ifndef __EMSCRIPTEN__
 	ShowCharity();
+#endif
 
 	LoadSoundBank();								// load sound bank for entire game
+
+#ifdef __EMSCRIPTEN__
+		// In WebAssembly mode: skip menus, go straight to gameplay.
+		// emscripten_set_main_loop_arg (simulate_infinite_loop=1) will not return.
+	InitLevel();
+	sEmscriptenKillDelay = KILL_DELAY;
+	MakeFadeEvent(true);
+	QD3D_CalcFramesPerSecond();
+	emscripten_set_main_loop_arg(EmscriptenGameFrameSafe, NULL, 0, 1);
+#else
+	if (gSkipToLevel)
+	{
+		while(true)
+			PlayLevel();
+	}
 
 	while(true)
 	{
@@ -385,7 +419,96 @@ unsigned long	someLong;
 		DoMainMenu();
 		PlayLevel();
 	}
+#endif
 }
 
+#ifdef __EMSCRIPTEN__
+/**************** EMSCRIPTEN PER-FRAME CALLBACK ************************/
+//
+// EmscriptenGameFrameImpl contains the actual per-frame game logic.
+// It is called from a C++ exception-safe wrapper defined in Boot.cpp
+// (EmscriptenGameFrameSafe) to catch Pomme::QuitRequest and other
+// C++ exceptions that would otherwise abort the WASM runtime.
+//
+
+void EmscriptenGameFrameImpl(void* arg)
+{
+	(void) arg;
+
+	float fps = gFramesPerSecondFrac;
+
+	UpdateInput();
+
+	CalcPlayerKeyControls();
+	MoveObjects();
+	QD3D_MoveShards();
+
+	UpdateLavaTextureAnimation();
+	UpdateWaterTextureAnimation();
+	DecAsteroidTimer();
+
+	DoMyTerrainUpdate();
+	UpdateInfobar();
+	QD3D_DrawScene(gGameViewInfoPtr, DrawTerrain);
+	QD3D_CalcFramesPerSecond();
 
 
+		/* CHECK CHEAT KEYS */
+
+	if (GetSDLKeyState(SDL_SCANCODE_F15) || GetSDLKeyState(SDL_SCANCODE_F12))
+	{
+		if (GetNewSDLKeyState(SDL_SCANCODE_F1))
+			GetHealth(1);
+		else
+		if (GetNewSDLKeyState(SDL_SCANCODE_F2))
+			StartMyShield(gPlayerObj);
+		else
+		if (GetNewSDLKeyState(SDL_SCANCODE_F3))
+			GetCheatWeapons();
+		else
+		if (GetNewSDLKeyState(SDL_SCANCODE_F4))
+			GetAllEggsCheat();
+		else
+		if (GetNewSDLKeyState(SDL_SCANCODE_F5))
+		{
+			gFuel = MAX_FUEL_CAPACITY;
+			gInfobarUpdateBits |= UPDATE_FUEL;
+		}
+	}
+
+
+		/* SEE IF GAME ENDED - RESTART LEVEL */
+
+	if (gGameOverFlag)
+	{
+		CleanupLevel();
+		sEmscriptenKillDelay = KILL_DELAY;
+		gGameOverFlag = false;
+		gPlayerGotKilledFlag = false;
+		gWonGameFlag = false;
+		gScore = 0;
+		InitLevel();
+		MakeFadeEvent(true);
+		QD3D_CalcFramesPerSecond();
+		return;
+	}
+
+
+		/* SEE IF GOT KILLED */
+
+	if (gPlayerGotKilledFlag)
+	{
+		sEmscriptenKillDelay -= fps;
+		if (sEmscriptenKillDelay < 0.0f)
+		{
+			ResetPlayer();
+			sEmscriptenKillDelay = KILL_DELAY;
+		}
+	}
+}
+
+// EmscriptenGameFrameSafe is the actual callback registered with
+// emscripten_set_main_loop_arg.  It is defined in Boot.cpp (C++) so
+// it can wrap EmscriptenGameFrameImpl in a try/catch block.
+extern void EmscriptenGameFrameSafe(void* arg);
+#endif

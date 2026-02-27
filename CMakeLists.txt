@@ -93,9 +93,19 @@ endif()
 # DEPENDENCIES
 #------------------------------------------------------------------------------
 
+# Enable native WASM C++ exceptions globally so that both Pomme (which throws
+# Pomme::QuitRequest) and game code can use exceptions.  Must be set before
+# add_subdirectory(Pomme) so the library is compiled with the same ABI.
+if(EMSCRIPTEN)
+	add_compile_options("-fwasm-exceptions")
+	add_link_options("-fwasm-exceptions")
+endif()
+
 add_subdirectory(extern/Pomme)
 
-find_package(OpenGL REQUIRED)
+if(NOT EMSCRIPTEN)
+	find_package(OpenGL REQUIRED)
+endif()
 
 #------------------------------------------------------------------------------
 # EXECUTABLE TARGET
@@ -209,7 +219,12 @@ else()
 endif()
 
 # Link core dependencies
-target_link_libraries(${GAME_TARGET} PRIVATE Pomme OpenGL::GL)
+if(EMSCRIPTEN)
+	# Emscripten uses WebGL instead of OpenGL - no separate OpenGL library needed
+	target_link_libraries(${GAME_TARGET} PRIVATE Pomme)
+else()
+	target_link_libraries(${GAME_TARGET} PRIVATE Pomme OpenGL::GL)
+endif()
 
 # Add required frameworks for KillMacMouseAcceleration
 if(APPLE)
@@ -276,16 +291,17 @@ set_target_properties(${GAME_TARGET} PROPERTIES
 # POST-BUILD (COPY ASSETS, ETC.)
 #------------------------------------------------------------------------------
 
-if(APPLE)
-	set(GAME_DATA_TARGET_LOCATION "$<TARGET_FILE_DIR:${GAME_TARGET}>/../Resources")
-else()
-	set(GAME_DATA_TARGET_LOCATION "$<TARGET_FILE_DIR:${GAME_TARGET}>/Data")
-endif()
+if(NOT EMSCRIPTEN)
+	if(APPLE)
+		set(GAME_DATA_TARGET_LOCATION "$<TARGET_FILE_DIR:${GAME_TARGET}>/../Resources")
+	else()
+		set(GAME_DATA_TARGET_LOCATION "$<TARGET_FILE_DIR:${GAME_TARGET}>/Data")
+	endif()
 
-add_custom_command(TARGET ${GAME_TARGET} POST_BUILD
-	COMMAND ${CMAKE_COMMAND} -E copy_directory "${GAME_DATADIR}" "${GAME_DATA_TARGET_LOCATION}")
+	add_custom_command(TARGET ${GAME_TARGET} POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_directory "${GAME_DATADIR}" "${GAME_DATA_TARGET_LOCATION}")
 
-if(APPLE)
+	if(APPLE)
 	set(INFO_PLIST "${GAME_DATA_TARGET_LOCATION}/../Info.plist")
 
 	add_custom_command(TARGET ${GAME_TARGET} POST_BUILD
@@ -309,5 +325,47 @@ if(WIN32)
 	include(InstallRequiredSystemLibraries)
 endif()
 
+endif() # NOT EMSCRIPTEN
+
 # Copy documentation to output folder
 configure_file(${CMAKE_SOURCE_DIR}/packaging/ReadMe.txt.in ${CMAKE_CURRENT_BINARY_DIR}/ReadMe.txt)
+
+#------------------------------------------------------------------------------
+# EMSCRIPTEN / WEBASSEMBLY
+#------------------------------------------------------------------------------
+
+if(EMSCRIPTEN)
+	# Disable visual fades in WebAssembly builds (they use blocking loops)
+	target_compile_definitions(${GAME_TARGET} PRIVATE ALLOW_FADE=0)
+
+	# Output as HTML + JS + WebAssembly (the .html suffix activates the --shell-file option)
+	set_target_properties(${GAME_TARGET} PROPERTIES SUFFIX ".html")
+
+	# Exported C functions callable from JavaScript
+	set(WASM_EXPORTED_FUNCTIONS
+		"_main"
+		"_SetFenceCollisionsEnabled"
+		"_GetFenceCollisionsEnabled"
+		"_CheatRestoreHealth"
+		"_CheatFillFuel"
+		"_CheatGetWeapons"
+		"_CheatGetAllEggs"
+		"_GetGameScore"
+		"_SetCustomTerrainFile"
+		"_ClearCustomTerrainFile"
+	)
+	list(JOIN WASM_EXPORTED_FUNCTIONS "," WASM_EXPORTED_FUNCTIONS_STR)
+
+	target_link_options(${GAME_TARGET} PRIVATE
+		"-fwasm-exceptions"
+		"SHELL:-s ALLOW_MEMORY_GROWTH=1"
+		"SHELL:-s MAXIMUM_MEMORY=1gb"
+		"SHELL:-s EXPORTED_RUNTIME_METHODS=[\"ccall\",\"cwrap\"]"
+		"SHELL:-s EXPORTED_FUNCTIONS=[${WASM_EXPORTED_FUNCTIONS_STR}]"
+		"SHELL:--preload-file ${GAME_DATADIR}@/Data"
+		"SHELL:--shell-file ${CMAKE_SOURCE_DIR}/packaging/emscripten/shell.html"
+		"SHELL:-s LEGACY_GL_EMULATION=1"
+		"SHELL:-s GL_UNSAFE_OPTS=0"
+		"SHELL:-s EMULATE_FUNCTION_POINTER_CASTS=1"
+	)
+endif()

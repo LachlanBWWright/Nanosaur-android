@@ -761,12 +761,20 @@ FSSpec	spec;
 		case	LEVEL_NUM_0:
 				FSMakeFSSpec(gDataSpec.vRefNum, gDataSpec.parID, ":Terrain:Level1.trt", &spec);
 				LoadTerrainTileset(&spec);
-				
-				FSMakeFSSpec(
-					gDataSpec.vRefNum,
-					gDataSpec.parID,
-					PRO_MODE ? ":Terrain:Level1Pro.ter" : ":Terrain:Level1.ter",
-					&spec);
+
+								// Use custom terrain file if specified, otherwise use the default
+				if (gCustomTerrainFile[0] != '\0')
+				{
+					FSMakeCustomSpec(gCustomTerrainFile, &spec);
+				}
+				else
+				{
+					FSMakeFSSpec(
+						gDataSpec.vRefNum,
+						gDataSpec.parID,
+						PRO_MODE ? ":Terrain:Level1Pro.ter" : ":Terrain:Level1.ter",
+						&spec);
+				}
 				LoadTerrain(&spec);
 
 				/* LOAD MODELS */

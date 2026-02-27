@@ -1,0 +1,91 @@
+name: Build WebAssembly
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build-wasm:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Install Emscripten (with cache)
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+          actions-cache-folder: 'emsdk-cache'
+
+      - name: Cache SDL3 Emscripten build
+        id: cache-sdl3-em
+        uses: actions/cache@v4
+        with:
+          path: /tmp/sdl3-em-install
+          key: sdl3-em-3.2.8-${{ runner.os }}
+
+      - name: Build SDL3 for Emscripten
+        if: steps.cache-sdl3-em.outputs.cache-hit != 'true'
+        run: |
+          SDL_VER=3.2.8
+          wget -q https://libsdl.org/release/SDL3-${SDL_VER}.tar.gz -O /tmp/SDL3.tar.gz
+          tar -xzf /tmp/SDL3.tar.gz -C /tmp
+          cd /tmp/SDL3-${SDL_VER}
+          mkdir build && cd build
+          emcmake cmake -S .. -B . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSDL_SHARED=OFF \
+            -DSDL_STATIC=ON \
+            -DSDL_TESTS=OFF \
+            -DSDL_EXAMPLES=OFF
+          emmake make -j$(nproc)
+          cmake --install . --prefix /tmp/sdl3-em-install
+
+      - name: Configure (Emscripten)
+        run: |
+          emcmake cmake -S . -B build-wasm \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SDL_FROM_SOURCE=OFF \
+            -DSDL_STATIC=ON \
+            -DSDL3_DIR=/tmp/sdl3-em-install/lib/cmake/SDL3
+
+      - name: Build
+        run: |
+          emmake cmake --build build-wasm -j$(nproc)
+
+      - name: Package WebAssembly bundle
+        run: |
+          mkdir -p dist/wasm/game
+          # Nanosaur.html is the shell with embedded Emscripten bootstrap script
+          cp build-wasm/Nanosaur.html  dist/wasm/game/index.html
+          cp build-wasm/Nanosaur.js    dist/wasm/game/
+          cp build-wasm/Nanosaur.wasm  dist/wasm/game/
+          cp build-wasm/Nanosaur.data  dist/wasm/game/
+          # Copy GitHub Pages landing page
+          cp docs/index.html           dist/wasm/index.html
+          echo "Nanosaur WebAssembly bundle ready"
+          ls -lh dist/wasm/game/
+
+      - name: Upload WebAssembly artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nanosaur-wasm
+          path: dist/wasm/
+          compression-level: 0
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        if: github.event_name == 'push'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: dist/wasm
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: "Deploy WebAssembly build from ${{ github.sha }}"

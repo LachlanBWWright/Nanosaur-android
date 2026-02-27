@@ -12,6 +12,10 @@
 
 #include "game.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 
 /****************************/
 /*    PROTOTYPES            */
@@ -60,6 +64,16 @@ void QD3D_Boot(void)
 
 	gGLContext = SDL_GL_CreateContext(gSDLWindow);									// also makes it current
 	GAME_ASSERT_MESSAGE(gGLContext, SDL_GetError());
+
+#ifdef __EMSCRIPTEN__
+	// SDL3 uses emscripten_webgl_create_context() (not Browser.createContext()), so
+	// Browser.useWebGL is never set to true.  LEGACY_GL_EMULATION's GLImmediate.init()
+	// checks this flag and bails early, leaving matrix arrays uninitialized and causing
+	// glLoadMatrixf to crash.  Set the flag here, right after the context is current.
+	EM_ASM({
+		if (typeof Browser !== 'undefined') Browser.useWebGL = true;
+	});
+#endif
 }
 
 

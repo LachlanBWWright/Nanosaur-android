@@ -19,3 +19,6 @@ cache/
 # macOS metadata
 .DS_Store
 
+# CodeQL analysis artifacts
+_codeql_detected_source_root
+_codeql_detected_source_root/
