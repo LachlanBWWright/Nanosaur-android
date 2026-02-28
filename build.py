@@ -472,6 +472,13 @@ class WasmProject(Project):
 
         sdl_source_dir = f"{libs_dir}/SDL3-{sdl_ver}"
         sdl_install_dir = f"{sdl_source_dir}/install-em"
+
+        # Skip rebuild if SDL3 is already installed (e.g. from CI cache)
+        if os.path.exists(f"{sdl_install_dir}/lib/cmake/SDL3"):
+            log(f"SDL3 Emscripten build already present: {sdl_install_dir}")
+            self.sdl3_em_dir = f"{sdl_install_dir}/lib/cmake/SDL3"
+            return
+
         rmtree_if_exists(sdl_source_dir)
 
         sdl_zip_path = get_package(f"https://libsdl.org/release/SDL3-{sdl_ver}.tar.gz")
