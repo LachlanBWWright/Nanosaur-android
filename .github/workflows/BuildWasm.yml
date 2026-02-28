@@ -11,9 +11,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     permissions:
-      contents: write
-      pages: write
-      id-token: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -70,8 +68,13 @@ jobs:
           cp build-wasm/Nanosaur.js    dist/wasm/game/
           cp build-wasm/Nanosaur.wasm  dist/wasm/game/
           cp build-wasm/Nanosaur.data  dist/wasm/game/
-          # Copy GitHub Pages landing page
+          # Copy GitHub Pages landing page and assets
           cp docs/index.html           dist/wasm/index.html
+          for f in docs/*.png docs/*.webp; do
+            [ -f "$f" ] && cp "$f" dist/wasm/ 2>/dev/null || true
+          done
+          [ -f packaging/Nanosaur.ico ] && cp packaging/Nanosaur.ico dist/wasm/Nanosaur.ico
+          [ -f packaging/Nanosaur.png ] && cp packaging/Nanosaur.png dist/wasm/Nanosaur.png
           # Add .nojekyll to prevent GitHub Pages from processing files with Jekyll
           touch dist/wasm/.nojekyll
           echo "Nanosaur WebAssembly bundle ready"
@@ -83,13 +86,3 @@ jobs:
           name: Nanosaur-wasm
           path: dist/wasm/
           compression-level: 0
-
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: dist/wasm
-          publish_branch: gh-pages
-          force_orphan: true
-          commit_message: "Deploy WebAssembly build from ${{ github.sha }}"

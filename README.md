@@ -4,7 +4,7 @@ This is Pangea Software's **Nanosaur** updated to run on modern systems. Origina
 
 **Download the game for macOS, Windows or Linux here:** https://github.com/jorio/Nanosaur/releases
 
-**Play the WebAssembly version in your browser:** https://lachanbwwright.github.io/Nanosaur-android/
+**Play the WebAssembly version in your browser:** https://lachlanbwwright.github.io/Nanosaur-android/
 
 ![Screenshot](docs/screenshot.png)
 
@@ -13,6 +13,7 @@ This is Pangea Software's **Nanosaur** updated to run on modern systems. Origina
 - [BUILD](BUILD.md) — How to build Nanosaur on macOS, Windows or Linux.
 - [CHANGELOG](CHANGELOG.md) — Nanosaur version history.
 - [LICENSE](LICENSE.md) — Licensing information (see also below).
+- [GITHUB_PAGES](docs/GITHUB_PAGES.md) — GitHub Pages deployment documentation.
 - [Instructions](docs/Nanosaur%20Instructions.pdf) — Original instruction manual.
 - [Game Engine Information](docs/Nanosaur%20Game%20Engine%20Docs.md) — An overview of Nanosaur's game engine, written by Brian Greenstone.
 
@@ -23,7 +24,7 @@ The WebAssembly port allows you to play Nanosaur directly in your web browser wi
 - Level editor integration and rapid testing workflows
 - Cross-platform compatibility (works on any device with a modern browser)
 
-**Play now:** https://lachanbwwright.github.io/Nanosaur-android/
+**Play now:** https://lachlanbwwright.github.io/Nanosaur-android/
 
 The WebAssembly build includes:
 - Full game functionality with embedded game data
@@ -31,7 +32,7 @@ The WebAssembly build includes:
 - Custom terrain file loading for level editor workflows
 - URL parameters for quick level access (see BUILD.md for details)
 
-The site is automatically built and deployed via GitHub Actions whenever changes are pushed to the master branch.
+The site is automatically built and deployed via GitHub Actions using OIDC-based GitHub Pages deployment (see [docs/GITHUB_PAGES.md](docs/GITHUB_PAGES.md) for details).
 
 ## About this port
 

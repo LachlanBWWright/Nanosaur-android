@@ -6,12 +6,22 @@
 #define ALLOW_FADE		1
 #endif
 
+#ifdef __EMSCRIPTEN__
+// LEGACY_GL_EMULATION can pollute the GL error queue with spurious
+// GL_INVALID_ENUM errors (see SDL-WASM-PORTING-GUIDE pitfall #15).
+// Drain the queue instead of asserting to avoid false crashes.
+#define CHECK_GL_ERROR()												\
+	do {																\
+		while (glGetError() != GL_NO_ERROR) { /* drain */ }				\
+	} while(0)
+#else
 #define CHECK_GL_ERROR()												\
 	do {					 											\
 		GLenum err = glGetError();										\
 		if (err != GL_NO_ERROR)											\
 			DoFatalGLError(err, __func__, __LINE__);					\
 	} while(0)
+#endif
 
 #pragma mark -
 

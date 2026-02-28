@@ -472,6 +472,13 @@ class WasmProject(Project):
 
         sdl_source_dir = f"{libs_dir}/SDL3-{sdl_ver}"
         sdl_install_dir = f"{sdl_source_dir}/install-em"
+
+        # Skip rebuild if SDL3 is already installed (e.g. from CI cache)
+        if os.path.exists(f"{sdl_install_dir}/lib/cmake/SDL3"):
+            log(f"SDL3 Emscripten build already present: {sdl_install_dir}")
+            self.sdl3_em_dir = f"{sdl_install_dir}/lib/cmake/SDL3"
+            return
+
         rmtree_if_exists(sdl_source_dir)
 
         sdl_zip_path = get_package(f"https://libsdl.org/release/SDL3-{sdl_ver}.tar.gz")
@@ -501,6 +508,14 @@ class WasmProject(Project):
             shutil.rmtree(self.dir_name)
 
         emcmake = self._find_emcmake()
+
+        # Auto-detect SDL3 Emscripten install when invoked as a separate step
+        # (e.g. CI runs --dependencies and --configure as separate commands, so
+        # self.sdl3_em_dir is not carried over between processes).
+        if not self.sdl3_em_dir:
+            sdl3_cmake_dir = f"{libs_dir}/SDL3-{sdl_ver}/install-em/lib/cmake/SDL3"
+            if os.path.exists(sdl3_cmake_dir):
+                self.sdl3_em_dir = sdl3_cmake_dir
 
         cmake_args = [emcmake, "cmake", "-S", ".", "-B", self.dir_name,
                       "-DCMAKE_BUILD_TYPE=Release",
