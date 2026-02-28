@@ -82,6 +82,8 @@ jobs:
           for f in docs/*.png docs/*.webp docs/*.pdf docs/*.md; do
             [ -f "$f" ] && cp "$f" _site/ 2>/dev/null || true
           done
+          # Copy favicon
+          [ -f packaging/Nanosaur.ico ] && cp packaging/Nanosaur.ico _site/Nanosaur.ico
 
           # WASM build output — the game itself lives under /game/
           cp build/Nanosaur.html _site/game/index.html

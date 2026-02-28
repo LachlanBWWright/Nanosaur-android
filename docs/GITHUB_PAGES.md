@@ -55,7 +55,7 @@ To test the WebAssembly build locally before deploying:
 python3 build.py --wasm
 
 # Serve locally
-cd build-wasm
+cd build
 python3 -m http.server 8080
 
 # Open http://localhost:8080/Nanosaur.html in your browser
