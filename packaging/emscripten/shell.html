@@ -280,6 +280,28 @@
 </footer>
 
 <script>
+  // ── Browser compatibility check ────────────────────────
+  (function() {
+    if (typeof WebAssembly === 'undefined') {
+      var card = document.getElementById('loading-card');
+      if (card) {
+        card.innerHTML = '<h2 style="color:#e06060">Browser Not Supported</h2>' +
+          '<p style="color:#aaa;margin-top:1rem">Your browser does not support WebAssembly. ' +
+          'Please use a modern browser such as Chrome, Firefox, Safari, or Edge.</p>';
+      }
+      return;
+    }
+    var c = document.createElement('canvas');
+    if (!c.getContext('webgl') && !c.getContext('webgl2')) {
+      var card = document.getElementById('loading-card');
+      if (card) {
+        card.innerHTML = '<h2 style="color:#e06060">WebGL Not Available</h2>' +
+          '<p style="color:#aaa;margin-top:1rem">Your browser or device does not support WebGL. ' +
+          'Please enable hardware acceleration or try a different browser.</p>';
+      }
+    }
+  })();
+
   // ── URL parameter parsing ─────────────────────────────
   (function() {
     var params = new URLSearchParams(window.location.search);
