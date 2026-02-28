@@ -30,6 +30,8 @@ The deployment is fully automated via GitHub Actions using OIDC-based Pages depl
 / (root)
 ├── index.html          # Landing page with game info, screenshot, and controls
 ├── screenshot.png       # Game screenshot
+├── Nanosaur.ico        # Favicon
+├── Nanosaur.png        # Logo (used in game loading overlay)
 ├── .nojekyll           # Prevents Jekyll from processing files
 └── game/
     ├── index.html      # The actual game (Emscripten shell)
