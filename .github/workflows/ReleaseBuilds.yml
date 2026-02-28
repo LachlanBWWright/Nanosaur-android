@@ -94,9 +94,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     permissions:
-      contents: write
-      pages: write
-      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -152,8 +150,12 @@ jobs:
           cp build-wasm/Nanosaur.js    dist/wasm/game/
           cp build-wasm/Nanosaur.wasm  dist/wasm/game/
           cp build-wasm/Nanosaur.data  dist/wasm/game/
-          # Copy GitHub Pages landing page
+          # Copy GitHub Pages landing page and assets
           cp docs/index.html           dist/wasm/index.html
+          for f in docs/*.png docs/*.webp; do
+            [ -f "$f" ] && cp "$f" dist/wasm/ 2>/dev/null || true
+          done
+          touch dist/wasm/.nojekyll
           cd dist
           zip -r Nanosaur-wasm.zip wasm/
 
@@ -164,15 +166,6 @@ jobs:
           path: dist/wasm/
           compression-level: 0
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        if: github.event_name == 'push'
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: dist/wasm
-          publish_branch: gh-pages
-          force_orphan: true
-          commit_message: "Deploy WebAssembly build from ${{ github.sha }}"
   create-github-release:
     needs: [build-linux-appimage, build-windows, build-wasm]
     runs-on: ubuntu-22.04

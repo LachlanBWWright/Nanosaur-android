@@ -19,6 +19,12 @@ cache/
 # macOS metadata
 .DS_Store
 
+# Emscripten SDK (cloned by CI)
+.emsdk/
+
+# GitHub Pages site (assembled by CI)
+_site/
+
 # CodeQL analysis artifacts
 _codeql_detected_source_root
 _codeql_detected_source_root/
