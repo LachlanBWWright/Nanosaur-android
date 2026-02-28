@@ -333,8 +333,10 @@
       var stext = document.getElementById('status-text');
 
       if (!text || text === '') {
-        // Loading finished — hide overlay, show toolbar
+        // Loading finished — hide overlay, show toolbar, focus canvas for input
         if (card)  card.style.display = 'none';
+        var c = document.getElementById('canvas');
+        if (c) c.focus();
         var tb = document.getElementById('toolbar');
         if (tb) tb.style.display = 'flex';
         startScorePolling();
@@ -356,8 +358,11 @@
 
     monitorRunDependencies: function(left) {
       var bar = document.getElementById('progress-bar');
+      var label = document.getElementById('progress-label');
       if (left === 0) {
-        Module.setStatus('');
+        if (bar) bar.value = 1;
+        if (label) label.textContent = 'Preparing…';
+        console.log('[Nanosaur] All dependencies loaded');
       } else {
         if (bar) {
           bar.value = Math.max(0, 1 - (left * 0.02));
