@@ -11,9 +11,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     permissions:
-      contents: write
-      pages: write
-      id-token: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -83,13 +81,3 @@ jobs:
           name: Nanosaur-wasm
           path: dist/wasm/
           compression-level: 0
-
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: dist/wasm
-          publish_branch: gh-pages
-          force_orphan: true
-          commit_message: "Deploy WebAssembly build from ${{ github.sha }}"

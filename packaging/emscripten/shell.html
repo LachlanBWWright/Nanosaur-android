@@ -1,227 +1,320 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nanosaur</title>
+  <title>Nanosaur — WebAssembly</title>
   <style>
+    :root {
+      --accent: #ff8800;
+      --bg:     #0d0d0d;
+      --panel:  #1a1a1a;
+      --border: #333;
+      --text:   #eee;
+      --dim:    #888;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      background: #111;
-      color: #eee;
-      font-family: sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      line-height: 1.5;
+    }
+
+    /* ── Header ──────────────────────────────────────────── */
+    #header {
+      text-align: center;
+      padding: 1.25rem 1rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(135deg, #1a0a00, #2a1500);
+    }
+    #header h1 {
+      font-size: 2rem;
+      color: var(--accent);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      text-shadow: 0 2px 8px rgba(255,136,0,0.4);
+    }
+    #header p { color: var(--dim); font-size: 0.85rem; margin-top: 0.25rem; }
+
+    /* ── Game area ───────────────────────────────────────── */
+    #game-wrap {
       display: flex;
       flex-direction: column;
       align-items: center;
-      min-height: 100vh;
-    }
-
-    #header {
-      width: 100%;
-      background: #1a1a1a;
-      padding: 8px 16px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      border-bottom: 2px solid #333;
-    }
-
-    #header h1 {
-      font-size: 1.3em;
-      color: #f80;
-    }
-
-    #header span {
-      font-size: 0.85em;
-      color: #888;
-    }
-
-    #canvas-container {
+      padding: 1rem;
       position: relative;
+    }
+
+    /* Loading card — overlays the canvas until game starts */
+    #loading-card {
+      position: absolute;
+      top: 1rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
       width: 100%;
       max-width: 960px;
-      margin-top: 8px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 2rem 1.5rem;
+      text-align: center;
     }
-
-    /* The canvas must have NO border or padding - required by Emscripten */
-    canvas#canvas {
-      display: block;
+    #loading-card h2 {
+      color: var(--accent);
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    #status-text {
+      font-size: 1.05rem;
+      color: var(--accent);
+      min-height: 1.6rem;
+    }
+    #progress-bar {
       width: 100%;
+      max-width: 420px;
+      height: 6px;
+      margin: 0.75rem auto 0.35rem;
+      accent-color: var(--accent);
+    }
+    #progress-label { font-size: 0.78rem; color: var(--dim); }
+
+    /* Canvas — always in the DOM with proper dimensions for SDL3 */
+    #canvas {
+      max-width: 100%;
+      width: 960px;
       aspect-ratio: 4/3;
+      border-radius: 6px;
+      outline: none;
       background: #000;
       cursor: crosshair;
     }
 
-    #status-overlay {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(0,0,0,0.75);
-      padding: 20px 32px;
-      border-radius: 8px;
-      text-align: center;
-      pointer-events: none;
+    /* Toolbar below canvas */
+    #toolbar {
+      display: none;
+      gap: 0.5rem;
+      padding: 0.5rem 0;
+      flex-wrap: wrap;
+      justify-content: center;
     }
 
-    #status-overlay.hidden { display: none; }
-
-    #spinner {
-      width: 40px;
-      height: 40px;
-      border: 4px solid #555;
-      border-top-color: #f80;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin: 0 auto 12px;
+    /* ── Generic button ──────────────────────────────────── */
+    .btn {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.35rem 0.8rem;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.88rem;
+      transition: background 0.12s, border-color 0.12s;
     }
+    .btn:hover  { background: #2a2a2a; border-color: var(--accent); }
+    .btn.on     { background: #2a1500; border-color: var(--accent); color: var(--accent); }
+    .btn.danger { border-color: #c04040; color: #e06060; }
+    .btn.danger:hover { background: #2a0d0d; }
 
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    #status-text { font-size: 0.95em; color: #ccc; }
-    #progress-bar-container { width: 220px; height: 8px; background: #333; border-radius: 4px; margin: 10px auto 0; }
-    #progress-bar { height: 100%; background: #f80; border-radius: 4px; width: 0%; transition: width 0.2s; }
-
-    #controls {
+    /* ── Controls / API panel ────────────────────────────── */
+    #api-panel {
       width: 100%;
       max-width: 960px;
-      background: #1a1a1a;
-      border: 1px solid #333;
-      border-radius: 4px;
-      margin-top: 8px;
-      padding: 12px 16px;
+      margin: 0.5rem auto 1.5rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+    }
+    #api-panel h2 {
+      color: var(--accent);
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+    }
+    #api-panel .sub {
+      color: var(--dim);
+      font-size: 0.82rem;
+      margin-bottom: 1rem;
     }
 
-    #controls h2 { font-size: 0.9em; color: #f80; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
-
-    .control-row {
+    .api-section { margin-bottom: 1.1rem; }
+    .api-section h3 {
+      font-size: 0.88rem;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.3rem;
+      margin-bottom: 0.6rem;
+    }
+    .api-row {
       display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin: 0.45rem 0;
       flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 8px;
+    }
+    .api-row label {
+      min-width: 160px;
+      font-size: 0.88rem;
+      color: #b0b0c8;
     }
 
-    .control-row label { font-size: 0.8em; color: #aaa; display: flex; align-items: center; gap: 6px; }
-
-    button.cheat-btn {
-      background: #2a2a2a;
-      color: #eee;
-      border: 1px solid #444;
-      border-radius: 4px;
-      padding: 5px 12px;
-      font-size: 0.8em;
-      cursor: pointer;
-      transition: background 0.15s;
+    .api-section code {
+      background: #111;
+      color: #7df;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 0.82rem;
     }
 
-    button.cheat-btn:hover { background: #3a3a3a; }
-    button.cheat-btn:active { background: #f80; color: #111; }
+    #score-display { font-size: 0.85em; color: var(--dim); margin-top: 8px; }
 
-    .toggle-btn {
-      background: #2a2a2a;
-      color: #eee;
-      border: 1px solid #444;
-      border-radius: 4px;
-      padding: 5px 12px;
-      font-size: 0.8em;
-      cursor: pointer;
-    }
-
-    .toggle-btn.active { background: #f80; color: #111; border-color: #f80; }
-
-    #score-display { font-size: 0.85em; color: #aaa; margin-top: 4px; }
-
+    /* ── Footer ──────────────────────────────────────────── */
     footer {
-      margin-top: 16px;
-      font-size: 0.75em;
-      color: #555;
       text-align: center;
-      padding-bottom: 16px;
+      color: #555;
+      font-size: 0.75em;
+      padding: 1rem;
+      border-top: 1px solid #222;
     }
+    footer a { color: #777; }
   </style>
 </head>
 <body>
 
 <div id="header">
   <h1>🦕 Nanosaur</h1>
-  <span>WebAssembly Edition</span>
+  <p>Classic 1998 dinosaur game — WebAssembly Edition</p>
 </div>
 
-<div id="canvas-container">
-  <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+<div id="game-wrap">
+  <!-- Loading card overlays the canvas until game starts -->
+  <div id="loading-card">
+    <h2>🦕 Nanosaur</h2>
+    <div id="status-text">Downloading…</div>
+    <progress id="progress-bar" value="0" max="1"></progress>
+    <div id="progress-label"></div>
+  </div>
 
-  <div id="status-overlay">
-    <div id="spinner"></div>
-    <div id="status-text">Loading…</div>
-    <div id="progress-bar-container">
-      <div id="progress-bar"></div>
+  <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"
+          width="960" height="720"></canvas>
+
+  <div id="toolbar">
+    <button class="btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+    <button class="btn" id="btn-mute" onclick="toggleMute()">🔊 Unmute</button>
+  </div>
+</div>
+
+<!-- Controls / Cheat Menu panel -->
+<div id="api-panel">
+  <h2>🎮 Cheat Menu / Level Editor Controls</h2>
+  <p class="sub">These controls call exported WASM functions. The game also accepts
+    <code>?level=N</code> and <code>?skipMenu=1</code> URL params.</p>
+
+  <div class="api-section">
+    <h3>Cheats &amp; Debug</h3>
+    <div class="api-row">
+      <label>Fence collisions</label>
+      <button class="btn on" id="btn-fence" onclick="toggleFence()">✓ Enabled</button>
+    </div>
+    <div class="api-row">
+      <button class="btn" onclick="doCheat('CheatRestoreHealth')">❤️ Restore Health</button>
+      <button class="btn" onclick="doCheat('CheatFillFuel')">⛽ Fill Fuel</button>
+      <button class="btn" onclick="doCheat('CheatGetWeapons')">🔫 Get All Weapons</button>
+      <button class="btn" onclick="doCheat('CheatGetAllEggs')">🥚 Get All Eggs</button>
     </div>
   </div>
-</div>
 
-<div id="controls">
-  <h2>🎮 Cheat Menu / Level Editor Controls</h2>
-  <div class="control-row">
-    <label>Fence Collisions:</label>
-    <button class="toggle-btn active" id="btn-fence" onclick="toggleFence(this)">Enabled</button>
+  <div class="api-section">
+    <h3>Terrain Override</h3>
+    <div class="api-row">
+      <label>Upload .ter file</label>
+      <input type="file" id="terrain-file-input" accept=".ter" style="display:none"
+             onchange="loadTerrainFile(this)">
+      <button class="btn" onclick="document.getElementById('terrain-file-input').click()">
+        📂 Upload .ter file
+      </button>
+      <button class="btn" onclick="clearCustomTerrain()" title="Revert to default terrain">↩️ Default</button>
+      <span id="terrain-file-name" style="font-size:0.75em; color:var(--dim); margin-left:6px;"></span>
+    </div>
+    <p class="sub">Upload a <code>.ter</code> file to inject custom terrain into the WASM virtual filesystem.
+       You can also use <code>FS.writeFile()</code> from the console and then call
+       <code>SetCustomTerrainFile</code>.</p>
   </div>
-  <div class="control-row">
-    <button class="cheat-btn" onclick="doCheat('CheatRestoreHealth')">❤️ Restore Health</button>
-    <button class="cheat-btn" onclick="doCheat('CheatFillFuel')">⛽ Fill Fuel</button>
-    <button class="cheat-btn" onclick="doCheat('CheatGetWeapons')">🔫 Get All Weapons</button>
-    <button class="cheat-btn" onclick="doCheat('CheatGetAllEggs')">🥚 Get All Eggs</button>
+
+  <div class="api-section">
+    <h3>Quick Reference</h3>
+    <div class="api-row"><code>SetFenceCollisionsEnabled(0)</code> — disable fence collisions</div>
+    <div class="api-row"><code>SetFenceCollisionsEnabled(1)</code> — re-enable fence collisions</div>
+    <div class="api-row"><code>CheatRestoreHealth()</code> — restore health</div>
+    <div class="api-row"><code>CheatFillFuel()</code> — fill jet fuel</div>
+    <div class="api-row"><code>CheatGetWeapons()</code> — get all weapons</div>
+    <div class="api-row"><code>CheatGetAllEggs()</code> — get all eggs</div>
+    <div class="api-row"><code>GetGameScore()</code> — returns current score</div>
+    <div class="api-row"><code>SetCustomTerrainFile("/Data/Terrain/foo.ter")</code> — override terrain file</div>
+    <div class="api-row"><code>ClearCustomTerrainFile()</code> — revert to default terrain</div>
   </div>
-  <div class="control-row" style="margin-top:8px; border-top: 1px solid #333; padding-top: 8px;">
-    <label style="font-size:0.8em; color:#aaa;">Load Custom Terrain (.ter):</label>
-    <input type="file" id="terrain-file-input" accept=".ter" style="display:none"
-           onchange="loadTerrainFile(this)">
-    <button class="cheat-btn" onclick="document.getElementById('terrain-file-input').click()">
-      📂 Upload .ter file
-    </button>
-    <button class="cheat-btn" onclick="clearCustomTerrain()" title="Revert to default terrain">↩️ Default</button>
-    <span id="terrain-file-name" style="font-size:0.75em; color:#888; margin-left:6px;"></span>
-  </div>
+
   <div id="score-display">Score: —</div>
 </div>
 
 <footer>
-  © 1998 Pangea Software, Inc. · Source port by Iliyas Jorio · WebAssembly port for level editor testing
+  <p>Nanosaur © 1998 Pangea Software, Inc. · Source port © 2025 Iliyas Jorio ·
+     <a href="https://github.com/LachlanBWWright/Nanosaur-android">GitHub</a>
+  </p>
 </footer>
 
 <script>
-  // ----- Emscripten module configuration -----
+  // ── Emscripten Module configuration ───────────────────
+
+  var _fenceEnabled = true;
+  var _muted = false;
+  var _scoreTimer = null;
+
   var Module = {
     canvas: (function() { return document.getElementById('canvas'); })(),
 
-    print: function(text) { console.log('[Nanosaur]', text); },
-    printErr: function(text) { console.error('[Nanosaur]', text); },
+    print:    function(t) { console.log('[Nanosaur]', t); },
+    printErr: function(t) { console.error('[Nanosaur]', t); },
 
     setStatus: function(text) {
-      var overlay = document.getElementById('status-overlay');
-      var statusText = document.getElementById('status-text');
-      var progressBar = document.getElementById('progress-bar');
+      var card  = document.getElementById('loading-card');
+      var bar   = document.getElementById('progress-bar');
+      var label = document.getElementById('progress-label');
+      var stext = document.getElementById('status-text');
 
-      if (!text) {
-        overlay.classList.add('hidden');
+      if (!text || text === '') {
+        // Loading finished — hide overlay, show toolbar
+        if (card)  card.style.display = 'none';
+        var tb = document.getElementById('toolbar');
+        if (tb) tb.style.display = 'flex';
         startScorePolling();
         return;
       }
 
-      overlay.classList.remove('hidden');
+      if (card) card.style.display = '';
 
-      var match = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
-      if (match) {
-        statusText.textContent = match[1].trim();
-        progressBar.style.width = (parseInt(match[2]) / parseInt(match[4]) * 100) + '%';
+      var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+      if (m) {
+        stext.textContent = m[1].trim();
+        var pct = parseInt(m[2]) / parseInt(m[4]);
+        bar.value = pct;
+        label.textContent = Math.round(pct * 100) + '%';
       } else {
-        statusText.textContent = text;
+        stext.textContent = text;
       }
     },
 
     monitorRunDependencies: function(left) {
+      var bar = document.getElementById('progress-bar');
       if (left === 0) {
         Module.setStatus('');
+      } else {
+        if (bar) {
+          bar.value = Math.max(0, 1 - (left * 0.02));
+        }
       }
     },
 
@@ -231,46 +324,69 @@
   };
 
   window.onerror = function(msg) {
-    var statusText = document.getElementById('status-text');
-    if (statusText) {
-      statusText.textContent = 'Error: ' + msg;
-      document.getElementById('spinner').style.display = 'none';
-    }
+    var stext = document.getElementById('status-text');
+    if (stext) stext.textContent = 'Error: ' + msg;
   };
 
-  // ----- Cheat / command interface -----
+  // ── UI helpers ────────────────────────────────────────
 
-  var fenceEnabled = true;
-  var scoreTimer = null;
-
-  function toggleFence(btn) {
-    fenceEnabled = !fenceEnabled;
-    btn.textContent = fenceEnabled ? 'Enabled' : 'Disabled';
-    btn.classList.toggle('active', fenceEnabled);
-    if (typeof Module !== 'undefined' && Module._SetFenceCollisionsEnabled) {
-      Module._SetFenceCollisionsEnabled(fenceEnabled ? 1 : 0);
+  function toggleFence() {
+    _fenceEnabled = !_fenceEnabled;
+    var btn = document.getElementById('btn-fence');
+    try {
+      Module.ccall('SetFenceCollisionsEnabled', null, ['number'],
+                   [_fenceEnabled ? 1 : 0]);
+    } catch (e) {
+      console.warn('Module not ready yet:', e);
+    }
+    if (btn) {
+      btn.textContent = _fenceEnabled ? '✓ Enabled' : '✗ Disabled';
+      btn.className   = 'btn' + (_fenceEnabled ? ' on' : ' danger');
     }
   }
 
   function doCheat(fnName) {
-    if (typeof Module !== 'undefined' && Module['_' + fnName]) {
-      Module['_' + fnName]();
+    try {
+      Module.ccall(fnName, null, [], []);
+    } catch (e) {
+      console.warn('Module not ready yet:', e);
     }
   }
 
   function startScorePolling() {
-    if (scoreTimer) return;
-    scoreTimer = setInterval(function() {
-      if (typeof Module !== 'undefined' && Module._GetGameScore) {
-        var score = Module._GetGameScore();
+    if (_scoreTimer) return;
+    _scoreTimer = setInterval(function() {
+      try {
+        var score = Module.ccall('GetGameScore', 'number', [], []);
         document.getElementById('score-display').textContent = 'Score: ' + score;
-      }
+      } catch (e) { /* not ready */ }
     }, 500);
   }
 
-  // ----- Custom terrain file loading -----
-  // Writes the uploaded .ter file into the Emscripten virtual filesystem,
-  // then notifies the game to restart with the new terrain.
+  function toggleFullscreen() {
+    var c = document.getElementById('canvas');
+    if (!c) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      c.requestFullscreen().catch(function (e) { console.warn(e); });
+    }
+  }
+
+  function toggleMute() {
+    _muted = !_muted;
+    var btn = document.getElementById('btn-mute');
+    try {
+      var ctx = Module.SDL2 && Module.SDL2.audioContext;
+      if (ctx) {
+        if (_muted) ctx.suspend(); else ctx.resume();
+      }
+    } catch (e) { /* ignore */ }
+    if (btn) btn.textContent = _muted ? '🔇 Muted' : '🔊 Unmute';
+  }
+
+  // ── Custom terrain file loading ───────────────────────
+
   function loadTerrainFile(input) {
     var file = input.files[0];
     if (!file) return;
@@ -278,16 +394,12 @@
     var reader = new FileReader();
     reader.onload = function(e) {
       var data = new Uint8Array(e.target.result);
-
-      // Write to Emscripten VFS at the terrain path
       var vfsPath = '/Data/Terrain/' + file.name;
       try {
         FS.writeFile(vfsPath, data);
         document.getElementById('terrain-file-name').textContent = file.name + ' ✓';
-        // Tell the game to use this file and restart the level
-        if (typeof Module !== 'undefined' && Module._SetCustomTerrainFile) {
-          Module.ccall('SetCustomTerrainFile', null, ['string'], [vfsPath]);
-        }
+        Module.ccall('SetCustomTerrainFile', null, ['string'], [vfsPath]);
+        console.log('[Nanosaur] Uploaded terrain: ' + vfsPath + ' (' + data.length + ' bytes)');
       } catch (err) {
         console.error('[Nanosaur] Failed to write terrain file:', err);
         document.getElementById('terrain-file-name').textContent = 'Error: ' + err.message;
@@ -299,13 +411,14 @@
   function clearCustomTerrain() {
     document.getElementById('terrain-file-name').textContent = '';
     document.getElementById('terrain-file-input').value = '';
-    if (typeof Module !== 'undefined' && Module._ClearCustomTerrainFile) {
-      Module._ClearCustomTerrainFile();
+    try {
+      Module.ccall('ClearCustomTerrainFile', null, [], []);
+    } catch (e) {
+      console.warn('Module not ready yet:', e);
     }
   }
 </script>
 
 {{{ SCRIPT }}}
-
 </body>
 </html>
