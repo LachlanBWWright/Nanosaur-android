@@ -443,7 +443,9 @@
     _muted = !_muted;
     var btn = document.getElementById('btn-mute');
     try {
-      var ctx = Module.SDL2 && Module.SDL2.audioContext;
+      // SDL3 uses Module.SDL3.audioContext; fall back to SDL2 for compatibility
+      var ctx = (Module.SDL3 && Module.SDL3.audioContext)
+             || (Module.SDL2 && Module.SDL2.audioContext);
       if (ctx) {
         if (_muted) ctx.suspend(); else ctx.resume();
       }
