@@ -421,6 +421,22 @@
 
   // ── UI helpers ────────────────────────────────────────
 
+  // Resume audio context on first user interaction (browser autoplay policy)
+  (function() {
+    function resumeAudio() {
+      try {
+        var ctx = (Module.SDL3 && Module.SDL3.audioContext)
+               || (Module.SDL2 && Module.SDL2.audioContext);
+        if (ctx && ctx.state === 'suspended') {
+          ctx.resume();
+          console.log('[Nanosaur] Audio context resumed');
+        }
+      } catch (e) { /* ignore */ }
+    }
+    document.addEventListener('click', resumeAudio, {once: true});
+    document.addEventListener('keydown', resumeAudio, {once: true});
+  })();
+
   function toggleFence() {
     _fenceEnabled = !_fenceEnabled;
     var btn = document.getElementById('btn-fence');
