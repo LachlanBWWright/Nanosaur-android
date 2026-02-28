@@ -156,6 +156,7 @@ jobs:
             [ -f "$f" ] && cp "$f" dist/wasm/ 2>/dev/null || true
           done
           [ -f packaging/Nanosaur.ico ] && cp packaging/Nanosaur.ico dist/wasm/Nanosaur.ico
+          [ -f packaging/Nanosaur.png ] && cp packaging/Nanosaur.png dist/wasm/Nanosaur.png
           touch dist/wasm/.nojekyll
           cd dist
           zip -r Nanosaur-wasm.zip wasm/

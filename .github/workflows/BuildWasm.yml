@@ -74,6 +74,7 @@ jobs:
             [ -f "$f" ] && cp "$f" dist/wasm/ 2>/dev/null || true
           done
           [ -f packaging/Nanosaur.ico ] && cp packaging/Nanosaur.ico dist/wasm/Nanosaur.ico
+          [ -f packaging/Nanosaur.png ] && cp packaging/Nanosaur.png dist/wasm/Nanosaur.png
           # Add .nojekyll to prevent GitHub Pages from processing files with Jekyll
           touch dist/wasm/.nojekyll
           echo "Nanosaur WebAssembly bundle ready"
