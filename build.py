@@ -509,6 +509,14 @@ class WasmProject(Project):
 
         emcmake = self._find_emcmake()
 
+        # Auto-detect SDL3 Emscripten install when invoked as a separate step
+        # (e.g. CI runs --dependencies and --configure as separate commands, so
+        # self.sdl3_em_dir is not carried over between processes).
+        if not self.sdl3_em_dir:
+            sdl3_cmake_dir = f"{libs_dir}/SDL3-{sdl_ver}/install-em/lib/cmake/SDL3"
+            if os.path.exists(sdl3_cmake_dir):
+                self.sdl3_em_dir = sdl3_cmake_dir
+
         cmake_args = [emcmake, "cmake", "-S", ".", "-B", self.dir_name,
                       "-DCMAKE_BUILD_TYPE=Release",
                       "-DBUILD_SDL_FROM_SOURCE=OFF",
