@@ -267,17 +267,64 @@
 </footer>
 
 <script>
+  // ── URL parameter parsing ─────────────────────────────
+  (function() {
+    var params = new URLSearchParams(window.location.search);
+    window._startLevel = params.has('level') ? parseInt(params.get('level'), 10) : -1;
+    window._skipMenu = params.has('skipMenu') ? parseInt(params.get('skipMenu'), 10) : 0;
+    window._startTerrain = params.get('terrainFile') || '';
+  })();
+
   // ── Emscripten Module configuration ───────────────────
 
   var _fenceEnabled = true;
   var _muted = false;
   var _scoreTimer = null;
 
+  // Global error handlers
+  window.addEventListener('error', function(e) {
+    console.error('[Nanosaur] Unhandled error:', e.message, e.filename, e.lineno);
+  });
+  window.addEventListener('unhandledrejection', function(e) {
+    console.error('[Nanosaur] Unhandled promise rejection:', e.reason);
+  });
+
   var Module = {
-    canvas: (function() { return document.getElementById('canvas'); })(),
+    canvas: document.getElementById('canvas'),
+
+    webglContextAttributes: {
+      powerPreference: 'high-performance',
+      antialias: false,
+      preserveDrawingBuffer: false
+    },
 
     print:    function(t) { console.log('[Nanosaur]', t); },
-    printErr: function(t) { console.error('[Nanosaur]', t); },
+    printErr: function(t) { console.warn('[Nanosaur stderr]', t); },
+
+    onAbort: function(reason) {
+      console.error('[Nanosaur] ABORT:', reason);
+      var stext = document.getElementById('status-text');
+      if (stext) stext.textContent = 'Error: ' + reason;
+      var card = document.getElementById('loading-card');
+      if (card) card.style.display = '';
+    },
+
+    onExit: function(code) {
+      if (code !== 0) {
+        console.error('[Nanosaur] Exited with code:', code);
+        var stext = document.getElementById('status-text');
+        if (stext) stext.textContent = 'Game exited with error (code ' + code + ')';
+        var card = document.getElementById('loading-card');
+        if (card) card.style.display = '';
+      }
+    },
+
+    preRun: [function() {
+      // Create config directory for persistent settings
+      try { FS.mkdir('/home'); } catch(e) {}
+      try { FS.mkdir('/home/web_user'); } catch(e) {}
+      try { FS.mkdir('/home/web_user/.config'); } catch(e) {}
+    }],
 
     setStatus: function(text) {
       var card  = document.getElementById('loading-card');
@@ -319,11 +366,15 @@
     },
 
     onRuntimeInitialized: function() {
+      console.log('[Nanosaur] Runtime initialized');
+      var stext = document.getElementById('status-text');
+      if (stext) stext.textContent = 'Starting game…';
       Module.setStatus('');
     }
   };
 
-  window.onerror = function(msg) {
+  window.onerror = function(msg, url, line) {
+    console.error('[Nanosaur] Window error:', msg, url, line);
     var stext = document.getElementById('status-text');
     if (stext) stext.textContent = 'Error: ' + msg;
   };
